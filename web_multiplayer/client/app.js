@@ -13,6 +13,15 @@ const trackSelect = document.getElementById('trackSelect');
 const applyTrackBtn = document.getElementById('applyTrackBtn');
 const customMapInput = document.getElementById('customMapInput');
 const hostCustomMapBtn = document.getElementById('hostCustomMapBtn');
+const mapWidthInput = document.getElementById('mapWidthInput');
+const mapHeightInput = document.getElementById('mapHeightInput');
+const resizeMapBtn = document.getElementById('resizeMapBtn');
+const loadCurrentTrackBtn = document.getElementById('loadCurrentTrackBtn');
+const editorToTextBtn = document.getElementById('editorToTextBtn');
+const clearEditorBtn = document.getElementById('clearEditorBtn');
+const mapEditorCanvas = document.getElementById('mapEditorCanvas');
+const mapEditorCtx = mapEditorCanvas.getContext('2d');
+const tileToolButtons = Array.from(document.querySelectorAll('.tile-tool'));
 const lapsSelect = document.getElementById('lapsSelect');
 const statusText = document.getElementById('statusText');
 const phaseText = document.getElementById('phaseText');
@@ -75,6 +84,16 @@ const gamepadState = {
   brake: 0,
   steer: 0,
   handbrake: false,
+};
+
+const mapEditorState = {
+  width: 64,
+  height: 48,
+  rows: [],
+  selectedTile: '1',
+  painting: false,
+  initialized: false,
+  hasManualChanges: false,
 };
 
 const inputState = {
@@ -423,6 +442,189 @@ function hostCustomMap() {
   });
 }
 
+function createEmptyEditorRows(width, height, fillTile = '1') {
+  const rows = [];
+  for (let y = 0; y < height; y++) {
+    rows.push(fillTile.repeat(width));
+  }
+  return rows;
+}
+
+function normalizeRows(rows) {
+  return (rows || []).map((row) => String(row || '').trimEnd()).filter((row) => row.length > 0);
+}
+
+function setEditorRows(rows, markManual = false) {
+  const normalized = normalizeRows(rows);
+  if (!normalized.length) return;
+  const width = normalized[0].length;
+  if (width < 1) return;
+  if (!normalized.every((row) => row.length === width)) return;
+
+  mapEditorState.rows = normalized;
+  mapEditorState.width = width;
+  mapEditorState.height = normalized.length;
+  mapEditorState.initialized = true;
+  if (markManual) {
+    mapEditorState.hasManualChanges = true;
+  }
+
+  mapWidthInput.value = String(width);
+  mapHeightInput.value = String(normalized.length);
+  drawMapEditor();
+}
+
+function exportEditorRows() {
+  return mapEditorState.rows.join('\n');
+}
+
+function setSelectedEditorTile(tile) {
+  mapEditorState.selectedTile = tile;
+  tileToolButtons.forEach((button) => {
+    button.classList.toggle('active', button.dataset.tile === tile);
+  });
+}
+
+function replaceAt(text, index, value) {
+  return text.substring(0, index) + value + text.substring(index + 1);
+}
+
+function ensureSingleStart(rows, newX, newY) {
+  for (let y = 0; y < rows.length; y++) {
+    if (!rows[y].includes('P')) continue;
+    rows[y] = rows[y].replaceAll('P', '.');
+  }
+  rows[newY] = replaceAt(rows[newY], newX, 'P');
+}
+
+function paintEditorTileAt(canvasX, canvasY, overrideTile = null) {
+  if (!mapEditorState.rows.length) return;
+  const tileW = mapEditorCanvas.width / mapEditorState.width;
+  const tileH = mapEditorCanvas.height / mapEditorState.height;
+  const x = Math.max(0, Math.min(mapEditorState.width - 1, Math.floor(canvasX / tileW)));
+  const y = Math.max(0, Math.min(mapEditorState.height - 1, Math.floor(canvasY / tileH)));
+  const paintTile = overrideTile || mapEditorState.selectedTile;
+
+  const rows = [...mapEditorState.rows];
+  if (paintTile === 'P') {
+    ensureSingleStart(rows, x, y);
+  } else {
+    rows[y] = replaceAt(rows[y], x, paintTile);
+  }
+
+  mapEditorState.rows = rows;
+  mapEditorState.hasManualChanges = true;
+  drawMapEditor();
+}
+
+function getCanvasPointFromEvent(event) {
+  const rect = mapEditorCanvas.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * mapEditorCanvas.width;
+  const y = ((event.clientY - rect.top) / rect.height) * mapEditorCanvas.height;
+  return { x, y };
+}
+
+function tileColor(tile) {
+  if (tile === '1' || tile === 'W') return '#2f6f2f';
+  if (tile === '.') return '#9f7a52';
+  if (tile === 'P') return '#60a5fa';
+  if (tile === 'F') return '#e5e7eb';
+  if (tile === 'C') return '#22d3ee';
+  return '#334155';
+}
+
+function drawMapEditor() {
+  const rows = mapEditorState.rows;
+  if (!rows.length) return;
+
+  const tileW = mapEditorCanvas.width / mapEditorState.width;
+  const tileH = mapEditorCanvas.height / mapEditorState.height;
+
+  mapEditorCtx.clearRect(0, 0, mapEditorCanvas.width, mapEditorCanvas.height);
+
+  for (let y = 0; y < rows.length; y++) {
+    const row = rows[y];
+    for (let x = 0; x < row.length; x++) {
+      const tile = row[x];
+      const px = x * tileW;
+      const py = y * tileH;
+      mapEditorCtx.fillStyle = tileColor(tile);
+      mapEditorCtx.fillRect(px, py, tileW, tileH);
+
+      mapEditorCtx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+      mapEditorCtx.lineWidth = 1;
+      mapEditorCtx.strokeRect(px, py, tileW, tileH);
+    }
+  }
+}
+
+function resizeEditorGrid() {
+  const width = Math.max(16, Math.min(128, Number(mapWidthInput.value || 64)));
+  const height = Math.max(12, Math.min(96, Number(mapHeightInput.value || 48)));
+  mapWidthInput.value = String(width);
+  mapHeightInput.value = String(height);
+  setEditorRows(createEmptyEditorRows(width, height, '1'), true);
+}
+
+function loadCurrentTrackIntoEditor() {
+  if (!mapData?.rows?.length) {
+    setStatus('No track loaded yet.', true);
+    return;
+  }
+  setEditorRows(mapData.rows, true);
+}
+
+function syncEditorToText() {
+  if (!mapEditorState.rows.length) {
+    setStatus('Map editor is empty.', true);
+    return;
+  }
+  customMapInput.value = exportEditorRows();
+  setStatus('Custom map text updated from editor.');
+}
+
+function initMapEditor() {
+  if (!mapEditorState.initialized) {
+    setEditorRows(createEmptyEditorRows(mapEditorState.width, mapEditorState.height, '1'));
+  }
+
+  setSelectedEditorTile('1');
+
+  mapEditorCanvas.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  });
+
+  mapEditorCanvas.addEventListener('mousedown', (event) => {
+    mapEditorState.painting = true;
+    const { x, y } = getCanvasPointFromEvent(event);
+    paintEditorTileAt(x, y, event.button === 2 ? '1' : null);
+  });
+
+  window.addEventListener('mouseup', () => {
+    mapEditorState.painting = false;
+  });
+
+  mapEditorCanvas.addEventListener('mousemove', (event) => {
+    if (!mapEditorState.painting) return;
+    const { x, y } = getCanvasPointFromEvent(event);
+    const isRightButton = (event.buttons & 2) !== 0;
+    paintEditorTileAt(x, y, isRightButton ? '1' : null);
+  });
+
+  tileToolButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      setSelectedEditorTile(button.dataset.tile || '1');
+    });
+  });
+
+  resizeMapBtn.addEventListener('click', () => resizeEditorGrid());
+  loadCurrentTrackBtn.addEventListener('click', () => loadCurrentTrackIntoEditor());
+  editorToTextBtn.addEventListener('click', () => syncEditorToText());
+  clearEditorBtn.addEventListener('click', () => {
+    setEditorRows(createEmptyEditorRows(mapEditorState.width, mapEditorState.height, '1'), true);
+  });
+}
+
 function send(type, extra = {}) {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify({ type, ...extra }));
@@ -481,6 +683,9 @@ function connect() {
       playerId = message.playerId;
       mapData = message.map;
       buildMapBuffer();
+      if (!mapEditorState.hasManualChanges && mapData?.rows?.length) {
+        setEditorRows(mapData.rows);
+      }
       availableTracks = message.tracks || availableTracks;
       populateTracks(message.map?.id || null);
       carModels = message.cars || [];
@@ -495,6 +700,9 @@ function connect() {
       }
       populateTracks(mapData?.id || null);
       buildMapBuffer();
+      if (!mapEditorState.hasManualChanges && mapData?.rows?.length) {
+        setEditorRows(mapData.rows);
+      }
     }
 
     if (message.type === 'error') {
@@ -1011,4 +1219,5 @@ function render(ts = 0) {
 
 updateFullscreenButtonLabel();
 refreshRaceHud();
+initMapEditor();
 render();

@@ -22,6 +22,7 @@ TIME_EPOCH_OFFSET = time.time() - time.perf_counter()
 LEADERBOARD_PUSH_INTERVAL_SECONDS = 0.5
 CUSTOM_TRACK_ID = 'custom'
 ALLOWED_MAP_TILES = ROAD_TILES | {'1', 'W'}
+CUSTOM_TRACKS_FILE = Path(__file__).parent / 'custom_tracks.json'
 
 PRESET_TRACKS = {
     'brands_hatch': {
@@ -35,6 +36,32 @@ PRESET_TRACKS = {
         'rows': GAME_MAP,
     },
 }
+
+
+def load_persisted_tracks() -> dict:
+    if not CUSTOM_TRACKS_FILE.exists():
+        return {}
+    try:
+        with open(CUSTOM_TRACKS_FILE, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        items = data.get('tracks', []) if isinstance(data, dict) else []
+    except Exception:
+        return {}
+
+    loaded = {}
+    for item in items:
+        track_id = str(item.get('id', '')).strip()
+        track_name = str(item.get('name', track_id)).strip() or track_id
+        rows = normalize_map_rows(item.get('rows', []))
+        is_valid, _, validated_rows = validate_map_rows(rows)
+        if not is_valid:
+            continue
+        loaded[track_id] = {
+            'id': track_id,
+            'name': track_name,
+            'rows': validated_rows,
+        }
+    return loaded
 
 
 def now_seconds() -> float:
@@ -58,10 +85,6 @@ def find_spawn(rows: List[str]):
         if col_idx != -1:
             return (col_idx + 0.5) * TILESIZE, (row_idx + 0.5) * TILESIZE
     return (8.5 * TILESIZE, 8.5 * TILESIZE)
-
-
-DEFAULT_TRACK = PRESET_TRACKS['brands_hatch']
-DEFAULT_SPAWN_X, DEFAULT_SPAWN_Y = find_spawn(DEFAULT_TRACK['rows'])
 
 
 def normalize_map_rows(rows: List[str]) -> List[str]:
@@ -101,6 +124,11 @@ def validate_map_rows(rows: List[str]):
         return False, 'Map must contain at least one C checkpoint tile.', None
 
     return True, '', cleaned_rows
+
+
+TRACK_LIBRARY = {**PRESET_TRACKS, **load_persisted_tracks()}
+DEFAULT_TRACK = TRACK_LIBRARY.get('brands_hatch', next(iter(TRACK_LIBRARY.values())))
+DEFAULT_SPAWN_X, DEFAULT_SPAWN_Y = find_spawn(DEFAULT_TRACK['rows'])
 
 
 def room_map_payload(room):
@@ -188,7 +216,8 @@ ROOMS: Dict[str, RoomState] = {}
 
 
 def available_tracks_payload():
-    return [{'id': track['id'], 'name': track['name']} for track in PRESET_TRACKS.values()]
+    tracks = sorted(TRACK_LIBRARY.values(), key=lambda track: track['name'].lower())
+    return [{'id': track['id'], 'name': track['name']} for track in tracks]
 
 
 def set_room_track(room: RoomState, track_id: str, rows: List[str], track_name: str):
@@ -809,8 +838,8 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
                         else:
                             set_room_track(room, CUSTOM_TRACK_ID, validated_rows, f'Custom by {player.name}')
                             await broadcast_room_map(room)
-                    elif requested_track_id in PRESET_TRACKS:
-                        preset = PRESET_TRACKS[requested_track_id]
+                    elif requested_track_id in TRACK_LIBRARY:
+                        preset = TRACK_LIBRARY[requested_track_id]
                         set_room_track(room, preset['id'], preset['rows'], preset['name'])
                         await broadcast_room_map(room)
                     else:

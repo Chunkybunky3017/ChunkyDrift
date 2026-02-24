@@ -1,7 +1,11 @@
+import json
 import os
+import re
+from pathlib import Path
+
 import pygame
 
-from settings import BRANDS_HATCH_MAP
+from settings import BRANDS_HATCH_MAP, GAME_MAP, STUNT_MAP
 
 
 TILE_WALL = '1'
@@ -39,16 +43,129 @@ PANEL_BG = (25, 25, 25)
 TEXT_COLOR = (230, 230, 230)
 HIGHLIGHT = (255, 220, 0)
 
+BUILTIN_TRACKS = [
+    {'id': 'brands_hatch', 'name': 'Brands Hatch', 'rows': BRANDS_HATCH_MAP},
+    {'id': 'rally_loop', 'name': 'Rally Loop', 'rows': GAME_MAP},
+    {'id': 'stunt_track', 'name': 'Stunt Track', 'rows': STUNT_MAP},
+]
+
+CUSTOM_TRACKS_FILE = Path(__file__).parent / 'web_multiplayer' / 'custom_tracks.json'
+
+
+def slugify_track_id(name):
+    track_id = re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+    return track_id or 'custom_track'
+
+
+def normalize_rows(rows):
+    return [str(row).rstrip('\n\r') for row in rows if str(row).strip()]
+
+
+def load_custom_tracks(path):
+    if not path.exists():
+        return []
+    try:
+        with open(path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        items = data.get('tracks', []) if isinstance(data, dict) else []
+        tracks = []
+        for item in items:
+            track_id = str(item.get('id', '')).strip()
+            name = str(item.get('name', track_id)).strip() or track_id
+            rows = normalize_rows(item.get('rows', []))
+            if not track_id or not rows:
+                continue
+            width = len(rows[0])
+            if width == 0 or any(len(row) != width for row in rows):
+                continue
+            tracks.append({'id': track_id, 'name': name, 'rows': rows})
+        return tracks
+    except Exception:
+        return []
+
+
+def save_custom_tracks(path, tracks):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {'tracks': tracks}
+    with open(path, 'w', encoding='utf-8') as file:
+        json.dump(payload, file, indent=2)
+
+
+def choose_mode():
+    print('Track Editor Startup')
+    print('1) Edit existing track')
+    print('2) Create new track')
+    while True:
+        choice = input('Choose 1 or 2: ').strip()
+        if choice in {'1', '2'}:
+            return choice
+        print('Invalid choice. Enter 1 or 2.')
+
+
+def choose_existing_track():
+    custom_tracks = load_custom_tracks(CUSTOM_TRACKS_FILE)
+    combined = []
+    builtin_ids = {track['id'] for track in BUILTIN_TRACKS}
+
+    combined.extend(BUILTIN_TRACKS)
+    for track in custom_tracks:
+        if track['id'] in builtin_ids:
+            for index, existing in enumerate(combined):
+                if existing['id'] == track['id']:
+                    combined[index] = track
+                    break
+        else:
+            combined.append(track)
+
+    print('\nAvailable tracks to edit:')
+    for index, track in enumerate(combined, start=1):
+        print(f"{index}) {track['name']} [{track['id']}] ({len(track['rows'][0])}x{len(track['rows'])})")
+
+    while True:
+        raw = input(f'Select track 1-{len(combined)}: ').strip()
+        if raw.isdigit():
+            selected = int(raw)
+            if 1 <= selected <= len(combined):
+                return combined[selected - 1]
+        print('Invalid selection.')
+
+
+def create_new_track_definition():
+    name = input('New track name: ').strip() or 'Custom Track'
+    proposed_id = slugify_track_id(name)
+    custom_id = input(f'Track id [{proposed_id}]: ').strip()
+    track_id = slugify_track_id(custom_id) if custom_id else proposed_id
+
+    width_raw = input('Width in tiles [64]: ').strip()
+    height_raw = input('Height in tiles [48]: ').strip()
+    width = int(width_raw) if width_raw.isdigit() else 64
+    height = int(height_raw) if height_raw.isdigit() else 48
+    width = max(16, min(128, width))
+    height = max(12, min(96, height))
+
+    rows = ['1' * width for _ in range(height)]
+    center_x = width // 2
+    center_y = height // 2
+    rows[center_y] = rows[center_y][:center_x] + 'P' + rows[center_y][center_x + 1:]
+    if center_x + 1 < width:
+        rows[center_y] = rows[center_y][:center_x + 1] + 'F' + rows[center_y][center_x + 2:]
+    if center_x + 2 < width:
+        rows[center_y] = rows[center_y][:center_x + 2] + 'C' + rows[center_y][center_x + 3:]
+
+    return {'id': track_id, 'name': name, 'rows': rows}
+
 
 class TrackEditor:
-    def __init__(self):
+    def __init__(self, track_id, track_name, initial_rows):
         pygame.init()
         self.font = pygame.font.SysFont('consolas', 18)
         self.small_font = pygame.font.SysFont('consolas', 15)
 
-        self.map_name = 'BRANDS_HATCH_MAP'
-        self.map_height = len(BRANDS_HATCH_MAP)
-        self.map_width = len(BRANDS_HATCH_MAP[0])
+        self.track_id = track_id
+        self.track_name = track_name
+        self.map_name = track_id.upper()
+        self.map_height = len(initial_rows)
+        self.map_width = len(initial_rows[0])
 
         self.tile_size = 12
         self.map_px_w = self.map_width * self.tile_size
@@ -61,14 +178,16 @@ class TrackEditor:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        self.original_grid = [list(row) for row in BRANDS_HATCH_MAP]
+        self.original_grid = [list(row) for row in initial_rows]
         self.grid = [row[:] for row in self.original_grid]
         self.current_tool = TILE_ROAD
-        self.status_text = 'Editing BRANDS_HATCH_MAP'
+        self.status_text = f'Editing {self.track_name} ({self.track_id})'
 
         self.default_map_path = 'custom_track_map.txt'
         self.default_python_path = 'custom_track_python.txt'
         self.default_snippet_path = 'custom_track_settings_snippet.txt'
+        self.repo_root = Path(__file__).parent
+        self.custom_tracks_path = self.repo_root / 'web_multiplayer' / 'custom_tracks.json'
         self.settings_file_path = os.path.join(os.path.dirname(__file__), 'settings.py')
 
     def set_status(self, text):
@@ -101,7 +220,7 @@ class TrackEditor:
 
     def reset_to_brands_hatch(self):
         self.grid = [row[:] for row in self.original_grid]
-        self.set_status('Reset to current BRANDS_HATCH_MAP from settings import')
+        self.set_status(f'Reset to original selected track: {self.track_name}')
 
     def save_map(self, path=None):
         file_path = path or self.default_map_path
@@ -202,6 +321,30 @@ class TrackEditor:
         except OSError as exc:
             self.set_status(f'Write failed: {exc}')
 
+    def save_to_web_tracks(self):
+        tracks = load_custom_tracks(self.custom_tracks_path)
+        updated = False
+        rows = [''.join(row) for row in self.grid]
+
+        for track in tracks:
+            if track['id'] == self.track_id:
+                track['name'] = self.track_name
+                track['rows'] = rows
+                updated = True
+                break
+
+        if not updated:
+            tracks.append(
+                {
+                    'id': self.track_id,
+                    'name': self.track_name,
+                    'rows': rows,
+                }
+            )
+
+        save_custom_tracks(self.custom_tracks_path, tracks)
+        self.set_status(f'Saved track "{self.track_name}" to web track library')
+
     def draw_map(self):
         for row in range(self.map_height):
             for col in range(self.map_width):
@@ -256,7 +399,7 @@ class TrackEditor:
             'L: Load map (custom_track_map.txt)',
             'E: Export Python list',
             'X: Export settings snippet',
-            'K: Write map back to settings.py',
+            'K: Save/update this track for website selector',
             'ESC: Quit',
             '',
             'Tip: Start tile (P) is unique.',
@@ -294,7 +437,7 @@ class TrackEditor:
                 elif event.key == pygame.K_x:
                     self.export_settings_snippet()
                 elif event.key == pygame.K_k:
-                    self.write_back_to_settings()
+                    self.save_to_web_tracks()
 
         left, _, right = pygame.mouse.get_pressed()
         if not (left or right):
@@ -324,5 +467,12 @@ class TrackEditor:
 
 
 if __name__ == '__main__':
-    editor = TrackEditor()
+    mode = choose_mode()
+    selected_track = choose_existing_track() if mode == '1' else create_new_track_definition()
+
+    editor = TrackEditor(
+        selected_track['id'],
+        selected_track['name'],
+        selected_track['rows'],
+    )
     editor.run()

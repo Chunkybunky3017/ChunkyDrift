@@ -44,6 +44,22 @@
       <div class="custom-map-box">
         <label for="customMapInput">Custom Map (rows of 1 . P F C, one P required)</label>
         <textarea id="customMapInput" rows="5" placeholder="Paste map rows here to host a custom track in this room..."></textarea>
+        <div class="map-editor-toolbar">
+          <label>W <input id="mapWidthInput" type="number" min="16" max="128" value="64" /></label>
+          <label>H <input id="mapHeightInput" type="number" min="12" max="96" value="48" /></label>
+          <button id="resizeMapBtn" type="button">Resize</button>
+          <button id="loadCurrentTrackBtn" type="button">Load Current Track</button>
+          <button id="editorToTextBtn" type="button">Use In Text Box</button>
+          <button id="clearEditorBtn" type="button">Clear</button>
+        </div>
+        <div class="map-editor-tiles">
+          <button id="toolWallBtn" class="tile-tool active" data-tile="1" type="button">Wall (1)</button>
+          <button id="toolRoadBtn" class="tile-tool" data-tile="." type="button">Road (.)</button>
+          <button id="toolStartBtn" class="tile-tool" data-tile="P" type="button">Start (P)</button>
+          <button id="toolFinishBtn" class="tile-tool" data-tile="F" type="button">Finish (F)</button>
+          <button id="toolCheckpointBtn" class="tile-tool" data-tile="C" type="button">Checkpoint (C)</button>
+        </div>
+        <canvas id="mapEditorCanvas" width="768" height="384"></canvas>
         <button id="hostCustomMapBtn">Host Custom Map</button>
       </div>
 
