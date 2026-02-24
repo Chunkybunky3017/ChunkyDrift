@@ -18,6 +18,7 @@
           <input id="nameInput" value="Player" maxlength="18" />
         </label>
         <button id="connectBtn">Connect</button>
+        <button id="fullscreenBtn">Fullscreen</button>
       </div>
 
       <div class="controls-row">
@@ -52,7 +53,19 @@
       </div>
     </div>
 
-    <canvas id="gameCanvas" width="1024" height="768"></canvas>
+    <div class="game-area" id="gameArea">
+      <canvas id="gameCanvas" width="1024" height="768"></canvas>
+      <div class="race-info-box" id="raceInfoBox">
+        <h3>Race Info</h3>
+        <div class="race-info-row"><span>Lap</span><span id="hudLap">-</span></div>
+        <div class="race-info-row"><span>Lap Time</span><span id="hudLapTime">00:00.000</span></div>
+        <div class="race-info-row"><span>Race Time</span><span id="hudRaceTime">00:00.000</span></div>
+        <div class="race-info-row"><span>Best Lap</span><span id="hudBestLap">--:--.---</span></div>
+        <div class="race-info-row"><span>Speed</span><span id="hudSpeed">0</span></div>
+        <div class="race-info-row"><span>Ping</span><span id="hudPing">-- ms</span></div>
+        <div class="race-info-row"><span>Phase</span><span id="hudPhase">lobby</span></div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="/client/app.js"></script>

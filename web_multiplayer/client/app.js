@@ -4,6 +4,7 @@ const ctx = canvas.getContext('2d');
 const roomInput = document.getElementById('roomInput');
 const nameInput = document.getElementById('nameInput');
 const connectBtn = document.getElementById('connectBtn');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
 const readyBtn = document.getElementById('readyBtn');
 const startRaceBtn = document.getElementById('startRaceBtn');
 const resetLobbyBtn = document.getElementById('resetLobbyBtn');
@@ -13,6 +14,14 @@ const statusText = document.getElementById('statusText');
 const phaseText = document.getElementById('phaseText');
 const roomLeaderboard = document.getElementById('roomLeaderboard');
 const globalLeaderboard = document.getElementById('globalLeaderboard');
+const gameArea = document.getElementById('gameArea');
+const hudLap = document.getElementById('hudLap');
+const hudLapTime = document.getElementById('hudLapTime');
+const hudRaceTime = document.getElementById('hudRaceTime');
+const hudBestLap = document.getElementById('hudBestLap');
+const hudSpeed = document.getElementById('hudSpeed');
+const hudPing = document.getElementById('hudPing');
+const hudPhase = document.getElementById('hudPhase');
 
 let socket = null;
 let connected = false;
@@ -49,6 +58,8 @@ let interpolationBackTimeMs = 90;
 const playerNetState = {};
 let lastInputSignature = '';
 let lastInputSentAt = 0;
+let trackedLapCount = 0;
+let trackedLapStartRaceMs = 0;
 
 const inputState = {
   up: false,
@@ -147,6 +158,50 @@ function updateLatencyModel(rttMs) {
     INTERPOLATION_BACK_TIME_MIN_MS,
     Math.min(INTERPOLATION_BACK_TIME_MAX_MS, target)
   );
+}
+
+function updateFullscreenButtonLabel() {
+  const isFullscreen = document.fullscreenElement === gameArea;
+  fullscreenBtn.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+}
+
+async function toggleFullscreen() {
+  try {
+    const isFullscreen = document.fullscreenElement === gameArea;
+    if (isFullscreen) {
+      await document.exitFullscreen();
+    } else {
+      await gameArea.requestFullscreen();
+    }
+  } catch {
+    setStatus('Fullscreen not supported in this browser', true);
+  }
+}
+
+function refreshRaceHud() {
+  const me = findMe();
+  const phase = roomState.phase || 'lobby';
+  const lapsToWin = Number(roomState.lapsToWin || 0);
+  const raceElapsedMs = Number(roomState.raceElapsedMs || 0);
+
+  if (!me || phase === 'lobby') {
+    trackedLapCount = 0;
+    trackedLapStartRaceMs = 0;
+  } else if (me.laps !== trackedLapCount) {
+    trackedLapCount = me.laps;
+    trackedLapStartRaceMs = raceElapsedMs;
+  }
+
+  const lapCurrent = me ? Math.min(me.laps + 1, lapsToWin || me.laps + 1) : 0;
+  const lapTimeMs = Math.max(0, raceElapsedMs - trackedLapStartRaceMs);
+
+  hudLap.textContent = me ? `${lapCurrent}/${lapsToWin || 0}` : '-';
+  hudLapTime.textContent = formatMs(lapTimeMs);
+  hudRaceTime.textContent = formatMs(raceElapsedMs);
+  hudBestLap.textContent = me && me.bestLapMs ? formatMs(me.bestLapMs) : '--:--.---';
+  hudSpeed.textContent = me ? `${Math.round(Number(me.speed || 0))}` : '0';
+  hudPing.textContent = rttMsSmoothed > 0 ? `${Math.round(rttMsSmoothed)} ms` : '-- ms';
+  hudPhase.textContent = phase;
 }
 
 function ingestPlayerState(serverPlayers, serverTimeSeconds) {
@@ -319,6 +374,8 @@ function connect() {
     connected = true;
     lastInputSignature = '';
     lastInputSentAt = 0;
+    trackedLapCount = 0;
+    trackedLapStartRaceMs = 0;
     setStatus(`Connected to '${room}'`);
   };
 
@@ -327,6 +384,9 @@ function connect() {
     playerId = null;
     players = [];
     Object.keys(playerNetState).forEach((id) => delete playerNetState[id]);
+    trackedLapCount = 0;
+    trackedLapStartRaceMs = 0;
+    refreshRaceHud();
     setStatus('Disconnected', true);
   };
 
@@ -360,6 +420,7 @@ function connect() {
       lapsSelect.value = String(roomState.lapsToWin || 3);
       refreshLeaderboards();
       refreshPhase();
+      refreshRaceHud();
     }
 
     if (message.type === 'pong') {
@@ -513,6 +574,8 @@ startRaceBtn.addEventListener('click', () => send('start_race'));
 resetLobbyBtn.addEventListener('click', () => send('reset_lobby'));
 carSelect.addEventListener('change', () => sendGarage());
 lapsSelect.addEventListener('change', () => sendGarage());
+fullscreenBtn.addEventListener('click', () => toggleFullscreen());
+document.addEventListener('fullscreenchange', updateFullscreenButtonLabel);
 
 function isDriftKey(key, code) {
   return key === 'Shift' || code === 'ShiftLeft' || code === 'ShiftRight';
@@ -785,8 +848,11 @@ function render(ts = 0) {
   for (const p of renderedPlayers) {
     drawPlayer(p);
   }
+  refreshRaceHud();
 
   requestAnimationFrame(render);
 }
 
+updateFullscreenButtonLabel();
+refreshRaceHud();
 render();
