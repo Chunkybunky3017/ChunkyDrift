@@ -394,12 +394,19 @@ def step_player_physics(player: PlayerState, dt: float):
     vel_side_x = right_x * sideways_dot
     vel_side_y = right_y * sideways_dot
 
-    target_grip = 0.05 if player.input_state.handbrake else base_grip
-    player.grip_state += (target_grip - player.grip_state) * 1.5 * dt
+    if player.input_state.handbrake:
+        target_grip = 0.05
+        player.grip_state += (target_grip - player.grip_state) * 4.0 * dt
+    else:
+        player.grip_state = base_grip
 
     friction_factor = 0.99 - (player.grip_state * 0.25)
     vel_side_x *= friction_factor
     vel_side_y *= friction_factor
+
+    if not player.input_state.handbrake:
+        vel_side_x *= 0.55
+        vel_side_y *= 0.55
 
     player.vx = vel_forward_x + vel_side_x
     player.vy = vel_forward_y + vel_side_y
