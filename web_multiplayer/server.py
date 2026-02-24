@@ -19,6 +19,7 @@ TICK_HZ = 60
 CAR_COLLISION_RADIUS = 12.0
 LEADERBOARD_FILE = Path(__file__).parent / 'web_leaderboard.json'
 TIME_EPOCH_OFFSET = time.time() - time.perf_counter()
+LEADERBOARD_PUSH_INTERVAL_SECONDS = 0.5
 
 TRACK_WIDTH_TILES = len(BRANDS_HATCH_MAP[0])
 TRACK_HEIGHT_TILES = len(BRANDS_HATCH_MAP)
@@ -100,6 +101,7 @@ class RoomState:
     race_start_time: float = 0.0
     laps_to_win: int = 3
     winner_id: str | None = None
+    last_leaderboard_push_time: float = 0.0
 
 
 ROOMS: Dict[str, RoomState] = {}
@@ -232,28 +234,41 @@ def room_leaderboard_snapshot(room: RoomState):
 
 async def broadcast_room_state(room: RoomState):
     now = now_seconds()
+    include_leaderboards = (
+        room.phase in ('lobby', 'finished')
+        or room.last_leaderboard_push_time <= 0
+        or (now - room.last_leaderboard_push_time) >= LEADERBOARD_PUSH_INTERVAL_SECONDS
+    )
+    if include_leaderboards:
+        room.last_leaderboard_push_time = now
+
+    room_payload = {
+        'phase': room.phase,
+        'lapsToWin': room.laps_to_win,
+        'countdownSecondsLeft': max(0, int(math.ceil(room.countdown_end_time - now))) if room.phase == 'countdown' else 0,
+        'winnerId': room.winner_id,
+        'raceElapsedMs': int((now - room.race_start_time) * 1000) if room.phase in ('racing', 'finished') and room.race_start_time > 0 else 0,
+    }
+
+    if include_leaderboards:
+        room_payload['roomLeaderboard'] = room_leaderboard_snapshot(room)
+        room_payload['globalLeaderboard'] = LEADERBOARD_STORE['brands_hatch'][leaderboard_category(room.laps_to_win)]
+
     payload = {
         'type': 'state',
         'serverTime': now,
-        'room': {
-            'phase': room.phase,
-            'lapsToWin': room.laps_to_win,
-            'countdownSecondsLeft': max(0, int(math.ceil(room.countdown_end_time - now))) if room.phase == 'countdown' else 0,
-            'winnerId': room.winner_id,
-            'raceElapsedMs': int((now - room.race_start_time) * 1000) if room.phase in ('racing', 'finished') and room.race_start_time > 0 else 0,
-            'roomLeaderboard': room_leaderboard_snapshot(room),
-            'globalLeaderboard': LEADERBOARD_STORE['brands_hatch'][leaderboard_category(room.laps_to_win)],
-        },
+        'room': room_payload,
         'players': [
             {
                 'id': p.player_id,
                 'name': p.name,
                 'color': p.color,
                 'carId': p.car_id,
-                'carName': WEB_CAR_MODELS[p.car_id]['name'],
                 'x': p.x,
                 'y': p.y,
                 'rotationDeg': p.rotation_deg,
+                'vx': p.vx,
+                'vy': p.vy,
                 'speed': math.sqrt(p.vx * p.vx + p.vy * p.vy),
                 'turnState': (-1 if p.input_state.left and not p.input_state.right else 1 if p.input_state.right and not p.input_state.left else 0),
                 'isDrifting': bool(p.input_state.handbrake and math.sqrt(p.vx * p.vx + p.vy * p.vy) > 50),
@@ -631,6 +646,16 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
                     p.ready = False
                     p.finished = False
                     p.laps = 0
+
+            elif msg_type == 'ping':
+                await safe_send_json(
+                    websocket,
+                    {
+                        'type': 'pong',
+                        'clientTime': float(message.get('clientTime', 0.0)),
+                        'serverTime': now_seconds(),
+                    },
+                )
 
             await broadcast_room_state(room)
 

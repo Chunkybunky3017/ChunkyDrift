@@ -38,10 +38,14 @@ let roomState = {
   globalLeaderboard: [],
 };
 
-const INTERPOLATION_BACK_TIME_MS = 90;
+const INTERPOLATION_BACK_TIME_MIN_MS = 45;
+const INTERPOLATION_BACK_TIME_MAX_MS = 140;
+const INTERPOLATION_BASELINE_MS = 45;
 const REMOTE_EXTRAPOLATION_LIMIT_MS = 80;
 const SELF_RECONCILE_BLEND = 0.35;
 let serverClockOffsetMs = 0;
+let rttMsSmoothed = 0;
+let interpolationBackTimeMs = 90;
 const playerNetState = {};
 let lastInputSignature = '';
 let lastInputSentAt = 0;
@@ -130,6 +134,21 @@ function updateServerClockOffset(serverTimeSeconds) {
   serverClockOffsetMs += (sampleOffset - serverClockOffsetMs) * 0.08;
 }
 
+function updateLatencyModel(rttMs) {
+  if (!Number.isFinite(rttMs) || rttMs <= 0) return;
+  if (rttMsSmoothed <= 0) {
+    rttMsSmoothed = rttMs;
+  } else {
+    rttMsSmoothed += (rttMs - rttMsSmoothed) * 0.2;
+  }
+
+  const target = INTERPOLATION_BASELINE_MS + rttMsSmoothed * 0.5;
+  interpolationBackTimeMs = Math.max(
+    INTERPOLATION_BACK_TIME_MIN_MS,
+    Math.min(INTERPOLATION_BACK_TIME_MAX_MS, target)
+  );
+}
+
 function ingestPlayerState(serverPlayers, serverTimeSeconds) {
   const serverTimeMs = typeof serverTimeSeconds === 'number'
     ? serverTimeSeconds * 1000
@@ -170,8 +189,8 @@ function ingestPlayerState(serverPlayers, serverTimeSeconds) {
     state.targetRot = player.rotationDeg;
     state.targetServerMs = serverTimeMs;
 
-    state.velocityX = (state.targetX - state.prevX) / (dtMs / 1000);
-    state.velocityY = (state.targetY - state.prevY) / (dtMs / 1000);
+    state.velocityX = Number.isFinite(player.vx) ? player.vx : (state.targetX - state.prevX) / (dtMs / 1000);
+    state.velocityY = Number.isFinite(player.vy) ? player.vy : (state.targetY - state.prevY) / (dtMs / 1000);
     state.rotationVelocity = normalizeAngleDeg(state.targetRot - state.prevRot) / (dtMs / 1000);
   }
 
@@ -186,7 +205,7 @@ function ingestPlayerState(serverPlayers, serverTimeSeconds) {
 }
 
 function getRenderedPlayers(renderTimeMs) {
-  const sampledServerMs = renderTimeMs + serverClockOffsetMs - INTERPOLATION_BACK_TIME_MS;
+  const sampledServerMs = renderTimeMs + serverClockOffsetMs - interpolationBackTimeMs;
 
   return players.map((player) => {
     const net = playerNetState[player.id];
@@ -298,6 +317,8 @@ function connect() {
 
   socket.onopen = () => {
     connected = true;
+    lastInputSignature = '';
+    lastInputSentAt = 0;
     setStatus(`Connected to '${room}'`);
   };
 
@@ -332,10 +353,21 @@ function connect() {
     if (message.type === 'state') {
       updateServerClockOffset(message.serverTime);
       ingestPlayerState(message.players || [], message.serverTime);
-      roomState = message.room || roomState;
+      roomState = {
+        ...roomState,
+        ...(message.room || {}),
+      };
       lapsSelect.value = String(roomState.lapsToWin || 3);
       refreshLeaderboards();
       refreshPhase();
+    }
+
+    if (message.type === 'pong') {
+      const now = performance.now();
+      const clientTime = Number(message.clientTime || 0);
+      const rttMs = now - clientTime;
+      updateLatencyModel(rttMs);
+      updateServerClockOffset(message.serverTime);
     }
   };
 }
@@ -510,6 +542,11 @@ window.addEventListener('keyup', (e) => {
 setInterval(() => {
   sendInputUpdate(true);
 }, 1000 / 20);
+
+setInterval(() => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  send('ping', { clientTime: performance.now() });
+}, 1000);
 
 function drawMap() {
   if (!mapData || !mapBuffer) {
