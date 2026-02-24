@@ -25,6 +25,9 @@
         <label>Garage Car
           <select id="carSelect"></select>
         </label>
+        <label>Track
+          <select id="trackSelect"></select>
+        </label>
         <label>Laps
           <select id="lapsSelect">
             <option value="1">1</option>
@@ -32,9 +35,16 @@
             <option value="5">5</option>
           </select>
         </label>
+        <button id="applyTrackBtn">Use Track</button>
         <button id="readyBtn">Ready</button>
         <button id="startRaceBtn">Start Race</button>
         <button id="resetLobbyBtn">Reset Lobby</button>
+      </div>
+
+      <div class="custom-map-box">
+        <label for="customMapInput">Custom Map (rows of 1 . P F C, one P required)</label>
+        <textarea id="customMapInput" rows="5" placeholder="Paste map rows here to host a custom track in this room..."></textarea>
+        <button id="hostCustomMapBtn">Host Custom Map</button>
       </div>
 
       <p id="statusText">Disconnected</p>

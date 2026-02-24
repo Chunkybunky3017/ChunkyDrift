@@ -9,6 +9,10 @@ const readyBtn = document.getElementById('readyBtn');
 const startRaceBtn = document.getElementById('startRaceBtn');
 const resetLobbyBtn = document.getElementById('resetLobbyBtn');
 const carSelect = document.getElementById('carSelect');
+const trackSelect = document.getElementById('trackSelect');
+const applyTrackBtn = document.getElementById('applyTrackBtn');
+const customMapInput = document.getElementById('customMapInput');
+const hostCustomMapBtn = document.getElementById('hostCustomMapBtn');
 const lapsSelect = document.getElementById('lapsSelect');
 const statusText = document.getElementById('statusText');
 const phaseText = document.getElementById('phaseText');
@@ -28,6 +32,7 @@ let connected = false;
 let playerId = null;
 let players = [];
 let mapData = null;
+let availableTracks = [];
 let carModels = [];
 let mapBuffer = null;
 let mapBufferCtx = null;
@@ -40,6 +45,8 @@ const lastTireMarkSpawnByPlayer = {};
 let roomState = {
   phase: 'lobby',
   lapsToWin: 3,
+  trackId: 'brands_hatch',
+  trackName: 'Brands Hatch',
   countdownSecondsLeft: 0,
   winnerId: null,
   raceElapsedMs: 0,
@@ -60,6 +67,15 @@ let lastInputSignature = '';
 let lastInputSentAt = 0;
 let trackedLapCount = 0;
 let trackedLapStartRaceMs = 0;
+let keyboardHandbrake = false;
+
+const gamepadState = {
+  connected: false,
+  throttle: 0,
+  brake: 0,
+  steer: 0,
+  handbrake: false,
+};
 
 const inputState = {
   up: false,
@@ -105,13 +121,42 @@ function lerpAngleDeg(start, end, t) {
 }
 
 function inputSignature() {
+  const payload = composeInputPayload();
   return [
-    inputState.up ? 1 : 0,
-    inputState.down ? 1 : 0,
-    inputState.left ? 1 : 0,
-    inputState.right ? 1 : 0,
-    inputState.handbrake ? 1 : 0,
-  ].join('');
+    payload.up ? 1 : 0,
+    payload.down ? 1 : 0,
+    payload.left ? 1 : 0,
+    payload.right ? 1 : 0,
+    payload.handbrake ? 1 : 0,
+    payload.throttle.toFixed(2),
+    payload.brake.toFixed(2),
+    payload.steer.toFixed(2),
+  ].join('|');
+}
+
+function composeInputPayload() {
+  const throttle = Math.max(inputState.up ? 1 : 0, gamepadState.throttle);
+  const brake = Math.max(inputState.down ? 1 : 0, gamepadState.brake);
+
+  let steer = gamepadState.steer;
+  if (inputState.left && !inputState.right) {
+    steer = Math.min(steer, -1);
+  } else if (inputState.right && !inputState.left) {
+    steer = Math.max(steer, 1);
+  }
+
+  const handbrake = Boolean(keyboardHandbrake || gamepadState.handbrake);
+
+  return {
+    up: throttle > 0.05,
+    down: brake > 0.05,
+    left: steer < -0.1,
+    right: steer > 0.1,
+    handbrake,
+    throttle,
+    brake,
+    steer,
+  };
 }
 
 function sendInputUpdate(force = false) {
@@ -130,7 +175,7 @@ function sendInputUpdate(force = false) {
     return;
   }
 
-  send('input', { input: inputState });
+  send('input', { input: composeInputPayload() });
   lastInputSignature = signature;
   lastInputSentAt = now;
 }
@@ -343,6 +388,41 @@ function populateCars() {
   }
 }
 
+function populateTracks(selectedId = null) {
+  const preserve = selectedId || trackSelect.value || '';
+  trackSelect.innerHTML = '';
+  for (const track of availableTracks) {
+    const option = document.createElement('option');
+    option.value = String(track.id);
+    option.textContent = track.name;
+    trackSelect.appendChild(option);
+  }
+  if (preserve && Array.from(trackSelect.options).some((opt) => opt.value === preserve)) {
+    trackSelect.value = preserve;
+  }
+}
+
+function applySelectedTrack() {
+  const selected = trackSelect.value;
+  if (!selected) {
+    setStatus('Pick a track first.', true);
+    return;
+  }
+  send('set_track', { trackId: selected });
+}
+
+function hostCustomMap() {
+  const customMap = customMapInput.value.trim();
+  if (!customMap) {
+    setStatus('Paste map rows before hosting a custom track.', true);
+    return;
+  }
+  send('set_track', {
+    trackId: 'custom',
+    customMap,
+  });
+}
+
 function send(type, extra = {}) {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify({ type, ...extra }));
@@ -401,9 +481,20 @@ function connect() {
       playerId = message.playerId;
       mapData = message.map;
       buildMapBuffer();
+      availableTracks = message.tracks || availableTracks;
+      populateTracks(message.map?.id || null);
       carModels = message.cars || [];
       populateCars();
       sendGarage(false);
+    }
+
+    if (message.type === 'map') {
+      mapData = message.map || mapData;
+      if (message.tracks) {
+        availableTracks = message.tracks;
+      }
+      populateTracks(mapData?.id || null);
+      buildMapBuffer();
     }
 
     if (message.type === 'error') {
@@ -417,6 +508,9 @@ function connect() {
         ...roomState,
         ...(message.room || {}),
       };
+      if (roomState.trackId) {
+        populateTracks(roomState.trackId);
+      }
       lapsSelect.value = String(roomState.lapsToWin || 3);
       refreshLeaderboards();
       refreshPhase();
@@ -526,6 +620,9 @@ function buildMapBuffer() {
 function refreshPhase() {
   const me = findMe();
   let text = `Phase: ${roomState.phase}`;
+  if (roomState.trackName) {
+    text += ` | Track: ${roomState.trackName}`;
+  }
   if (roomState.phase === 'countdown') {
     text += ` (${roomState.countdownSecondsLeft})`;
   }
@@ -573,6 +670,13 @@ readyBtn.addEventListener('click', () => {
 startRaceBtn.addEventListener('click', () => send('start_race'));
 resetLobbyBtn.addEventListener('click', () => send('reset_lobby'));
 carSelect.addEventListener('change', () => sendGarage());
+trackSelect.addEventListener('change', () => {
+  if (trackSelect.value !== 'custom') {
+    applySelectedTrack();
+  }
+});
+applyTrackBtn.addEventListener('click', () => applySelectedTrack());
+hostCustomMapBtn.addEventListener('click', () => hostCustomMap());
 lapsSelect.addEventListener('change', () => sendGarage());
 fullscreenBtn.addEventListener('click', () => toggleFullscreen());
 document.addEventListener('fullscreenchange', updateFullscreenButtonLabel);
@@ -586,7 +690,7 @@ function setKeyState(key, code, pressed) {
   if (key === 'ArrowDown' || key === 's' || key === 'S') inputState.down = pressed;
   if (key === 'ArrowLeft' || key === 'a' || key === 'A') inputState.left = pressed;
   if (key === 'ArrowRight' || key === 'd' || key === 'D') inputState.right = pressed;
-  if (isDriftKey(key, code)) inputState.handbrake = pressed;
+  if (isDriftKey(key, code)) keyboardHandbrake = pressed;
 }
 
 window.addEventListener('keydown', (e) => {
@@ -610,6 +714,55 @@ setInterval(() => {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   send('ping', { clientTime: performance.now() });
 }, 1000);
+
+function readTrigger(axisValue) {
+  if (typeof axisValue !== 'number') return 0;
+  return Math.max(0, Math.min(1, (axisValue + 1) * 0.5));
+}
+
+function applyDeadzone(value, deadzone = 0.15) {
+  if (!Number.isFinite(value)) return 0;
+  if (Math.abs(value) <= deadzone) return 0;
+  const sign = Math.sign(value);
+  const normalized = (Math.abs(value) - deadzone) / (1 - deadzone);
+  return sign * Math.max(0, Math.min(1, normalized));
+}
+
+function updateGamepadState() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const pad = Array.from(pads).find((gp) => gp && gp.connected);
+
+  if (!pad) {
+    gamepadState.connected = false;
+    gamepadState.throttle = 0;
+    gamepadState.brake = 0;
+    gamepadState.steer = 0;
+    gamepadState.handbrake = false;
+    return;
+  }
+
+  const steerAxis = applyDeadzone(pad.axes[0] || 0, 0.14);
+  const throttleAxis = readTrigger(pad.axes[5]);
+  const brakeAxis = readTrigger(pad.axes[2]);
+
+  const throttleButton = pad.buttons?.[7]?.value || 0;
+  const brakeButton = pad.buttons?.[6]?.value || 0;
+  const handbrakePressed = Boolean(pad.buttons?.[0]?.pressed || pad.buttons?.[1]?.pressed || pad.buttons?.[2]?.pressed);
+
+  gamepadState.connected = true;
+  gamepadState.steer = steerAxis;
+  gamepadState.throttle = Math.max(throttleAxis, throttleButton);
+  gamepadState.brake = Math.max(brakeAxis, brakeButton);
+  gamepadState.handbrake = handbrakePressed;
+}
+
+window.addEventListener('gamepadconnected', () => {
+  setStatus('Controller connected');
+});
+
+window.addEventListener('gamepaddisconnected', () => {
+  setStatus('Controller disconnected');
+});
 
 function drawMap() {
   if (!mapData || !mapBuffer) {
@@ -840,6 +993,9 @@ function render(ts = 0) {
     dt = Math.min(0.05, (ts - lastRenderTs) / 1000);
   }
   lastRenderTs = ts;
+
+  updateGamepadState();
+  sendInputUpdate();
 
   drawMap();
   updateAndDrawTireMarks(dt);

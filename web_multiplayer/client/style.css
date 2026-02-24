@@ -91,8 +91,41 @@ body {
   background: #64748b;
 }
 
+#applyTrackBtn {
+  background: #8b5cf6;
+}
+
 #fullscreenBtn {
   background: #0ea5e9;
+}
+
+.custom-map-box {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-map-box label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.custom-map-box textarea {
+  resize: vertical;
+  min-height: 90px;
+  background: #0b1220;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 8px;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+}
+
+#hostCustomMapBtn {
+  width: fit-content;
+  background: #06b6d4;
 }
 
 .hint {

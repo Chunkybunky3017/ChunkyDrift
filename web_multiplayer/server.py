@@ -11,7 +11,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from settings import BRANDS_HATCH_MAP, CAR_MODELS, TILESIZE
+from settings import BRANDS_HATCH_MAP, CAR_MODELS, GAME_MAP, TILESIZE
 
 
 ROAD_TILES = {'.', 'P', 'F', 'C'}
@@ -20,9 +20,21 @@ CAR_COLLISION_RADIUS = 12.0
 LEADERBOARD_FILE = Path(__file__).parent / 'web_leaderboard.json'
 TIME_EPOCH_OFFSET = time.time() - time.perf_counter()
 LEADERBOARD_PUSH_INTERVAL_SECONDS = 0.5
+CUSTOM_TRACK_ID = 'custom'
+ALLOWED_MAP_TILES = ROAD_TILES | {'1', 'W'}
 
-TRACK_WIDTH_TILES = len(BRANDS_HATCH_MAP[0])
-TRACK_HEIGHT_TILES = len(BRANDS_HATCH_MAP)
+PRESET_TRACKS = {
+    'brands_hatch': {
+        'id': 'brands_hatch',
+        'name': 'Brands Hatch',
+        'rows': BRANDS_HATCH_MAP,
+    },
+    'rally_loop': {
+        'id': 'rally_loop',
+        'name': 'Rally Loop',
+        'rows': GAME_MAP,
+    },
+}
 
 
 def now_seconds() -> float:
@@ -33,15 +45,73 @@ def rgb_to_hex(rgb):
     return '#{:02X}{:02X}{:02X}'.format(rgb[0], rgb[1], rgb[2])
 
 
-def find_spawn():
-    for row_idx, row in enumerate(BRANDS_HATCH_MAP):
+def safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def find_spawn(rows: List[str]):
+    for row_idx, row in enumerate(rows):
         col_idx = row.find('P')
         if col_idx != -1:
             return (col_idx + 0.5) * TILESIZE, (row_idx + 0.5) * TILESIZE
     return (8.5 * TILESIZE, 8.5 * TILESIZE)
 
 
-SPAWN_X, SPAWN_Y = find_spawn()
+DEFAULT_TRACK = PRESET_TRACKS['brands_hatch']
+DEFAULT_SPAWN_X, DEFAULT_SPAWN_Y = find_spawn(DEFAULT_TRACK['rows'])
+
+
+def normalize_map_rows(rows: List[str]) -> List[str]:
+    return [str(row).rstrip('\n\r') for row in rows if str(row).strip()]
+
+
+def validate_map_rows(rows: List[str]):
+    cleaned_rows = normalize_map_rows(rows)
+    if not cleaned_rows:
+        return False, 'Map is empty.', None
+
+    width = len(cleaned_rows[0])
+    if width < 16:
+        return False, 'Map width must be at least 16 tiles.', None
+    if len(cleaned_rows) < 12:
+        return False, 'Map height must be at least 12 tiles.', None
+
+    if len(cleaned_rows) > 96 or width > 128:
+        return False, 'Map is too large. Max size is 128x96.', None
+
+    for row in cleaned_rows:
+        if len(row) != width:
+            return False, 'All map rows must have the same width.', None
+        for char in row:
+            if char not in ALLOWED_MAP_TILES:
+                return False, f"Invalid tile '{char}'. Use only 1, W, ., P, F, C.", None
+
+    start_count = sum(row.count('P') for row in cleaned_rows)
+    finish_count = sum(row.count('F') for row in cleaned_rows)
+    checkpoint_count = sum(row.count('C') for row in cleaned_rows)
+
+    if start_count != 1:
+        return False, 'Map must contain exactly one P start tile.', None
+    if finish_count < 1:
+        return False, 'Map must contain at least one F finish tile.', None
+    if checkpoint_count < 1:
+        return False, 'Map must contain at least one C checkpoint tile.', None
+
+    return True, '', cleaned_rows
+
+
+def room_map_payload(room):
+    return {
+        'id': room.track_id,
+        'name': room.track_name,
+        'tileSize': TILESIZE,
+        'widthTiles': room.track_width_tiles,
+        'heightTiles': room.track_height_tiles,
+        'rows': room.track_rows,
+    }
 
 WEB_CAR_MODELS = [
     {
@@ -65,6 +135,9 @@ class InputState:
     left: bool = False
     right: bool = False
     handbrake: bool = False
+    throttle: float = 0.0
+    brake: float = 0.0
+    steer: float = 0.0
 
 
 @dataclass
@@ -102,9 +175,52 @@ class RoomState:
     laps_to_win: int = 3
     winner_id: str | None = None
     last_leaderboard_push_time: float = 0.0
+    track_id: str = DEFAULT_TRACK['id']
+    track_name: str = DEFAULT_TRACK['name']
+    track_rows: List[str] = field(default_factory=lambda: list(DEFAULT_TRACK['rows']))
+    track_width_tiles: int = len(DEFAULT_TRACK['rows'][0])
+    track_height_tiles: int = len(DEFAULT_TRACK['rows'])
+    spawn_x: float = DEFAULT_SPAWN_X
+    spawn_y: float = DEFAULT_SPAWN_Y
 
 
 ROOMS: Dict[str, RoomState] = {}
+
+
+def available_tracks_payload():
+    return [{'id': track['id'], 'name': track['name']} for track in PRESET_TRACKS.values()]
+
+
+def set_room_track(room: RoomState, track_id: str, rows: List[str], track_name: str):
+    room.track_id = track_id
+    room.track_name = track_name
+    room.track_rows = list(rows)
+    room.track_width_tiles = len(rows[0])
+    room.track_height_tiles = len(rows)
+    room.spawn_x, room.spawn_y = find_spawn(rows)
+    room.phase = 'lobby'
+    room.winner_id = None
+    room.last_leaderboard_push_time = 0.0
+    for index, player in enumerate(room.players.values()):
+        player.ready = False
+        player.finished = False
+        player.laps = 0
+        player.checkpoint_passed = False
+        player.vx = 0.0
+        player.vy = 0.0
+        player.x = room.spawn_x + index * 18
+        player.y = room.spawn_y
+
+
+async def broadcast_room_map(room: RoomState):
+    payload = {
+        'type': 'map',
+        'map': room_map_payload(room),
+        'tracks': available_tracks_payload(),
+    }
+    recipients = [player.websocket for player in list(room.players.values())]
+    if recipients:
+        await asyncio.gather(*(safe_send_json(socket, payload) for socket in recipients), return_exceptions=True)
 
 
 def load_leaderboard_store():
@@ -147,9 +263,18 @@ def leaderboard_category(laps: int) -> str:
     return '3_laps'
 
 
-def update_global_leaderboard(player: PlayerState, laps_to_win: int):
+def ensure_track_leaderboard(track_id: str):
+    if track_id not in LEADERBOARD_STORE or not isinstance(LEADERBOARD_STORE[track_id], dict):
+        LEADERBOARD_STORE[track_id] = {'1_laps': [], '3_laps': [], '5_laps': []}
+    for category in ['1_laps', '3_laps', '5_laps']:
+        if category not in LEADERBOARD_STORE[track_id] or not isinstance(LEADERBOARD_STORE[track_id][category], list):
+            LEADERBOARD_STORE[track_id][category] = []
+
+
+def update_global_leaderboard(track_id: str, player: PlayerState, laps_to_win: int):
+    ensure_track_leaderboard(track_id)
     category = leaderboard_category(laps_to_win)
-    entries = LEADERBOARD_STORE['brands_hatch'][category]
+    entries = LEADERBOARD_STORE[track_id][category]
     entries.append(
         {
             'name': player.name,
@@ -159,7 +284,7 @@ def update_global_leaderboard(player: PlayerState, laps_to_win: int):
         }
     )
     entries.sort(key=lambda entry: entry['timeMs'])
-    LEADERBOARD_STORE['brands_hatch'][category] = entries[:20]
+    LEADERBOARD_STORE[track_id][category] = entries[:20]
     save_leaderboard_store()
 
 
@@ -177,12 +302,17 @@ async def root():
 @app.get('/api/map')
 async def get_map():
     return {
-        'name': 'brands_hatch',
+        'name': DEFAULT_TRACK['id'],
         'tileSize': TILESIZE,
-        'widthTiles': TRACK_WIDTH_TILES,
-        'heightTiles': TRACK_HEIGHT_TILES,
-        'rows': BRANDS_HATCH_MAP,
+        'widthTiles': len(DEFAULT_TRACK['rows'][0]),
+        'heightTiles': len(DEFAULT_TRACK['rows']),
+        'rows': DEFAULT_TRACK['rows'],
     }
+
+
+@app.get('/api/tracks')
+async def get_tracks():
+    return {'tracks': available_tracks_payload()}
 
 
 @app.get('/api/cars')
@@ -192,23 +322,24 @@ async def get_cars():
 
 @app.get('/api/leaderboard')
 async def get_leaderboard():
-    return LEADERBOARD_STORE['brands_hatch']
+    ensure_track_leaderboard(DEFAULT_TRACK['id'])
+    return LEADERBOARD_STORE[DEFAULT_TRACK['id']]
 
 
-def is_on_road(x: float, y: float) -> bool:
+def is_on_road(room: RoomState, x: float, y: float) -> bool:
     col = int(x // TILESIZE)
     row = int(y // TILESIZE)
-    if row < 0 or col < 0 or row >= TRACK_HEIGHT_TILES or col >= TRACK_WIDTH_TILES:
+    if row < 0 or col < 0 or row >= room.track_height_tiles or col >= room.track_width_tiles:
         return False
-    return BRANDS_HATCH_MAP[row][col] in ROAD_TILES
+    return room.track_rows[row][col] in ROAD_TILES
 
 
-def current_tile(x: float, y: float):
+def current_tile(room: RoomState, x: float, y: float):
     col = int(x // TILESIZE)
     row = int(y // TILESIZE)
-    if row < 0 or col < 0 or row >= TRACK_HEIGHT_TILES or col >= TRACK_WIDTH_TILES:
+    if row < 0 or col < 0 or row >= room.track_height_tiles or col >= room.track_width_tiles:
         return '1'
-    return BRANDS_HATCH_MAP[row][col]
+    return room.track_rows[row][col]
 
 
 async def safe_send_json(ws: WebSocket, payload: dict):
@@ -245,14 +376,17 @@ async def broadcast_room_state(room: RoomState):
     room_payload = {
         'phase': room.phase,
         'lapsToWin': room.laps_to_win,
+        'trackId': room.track_id,
+        'trackName': room.track_name,
         'countdownSecondsLeft': max(0, int(math.ceil(room.countdown_end_time - now))) if room.phase == 'countdown' else 0,
         'winnerId': room.winner_id,
         'raceElapsedMs': int((now - room.race_start_time) * 1000) if room.phase in ('racing', 'finished') and room.race_start_time > 0 else 0,
     }
 
     if include_leaderboards:
+        ensure_track_leaderboard(room.track_id)
         room_payload['roomLeaderboard'] = room_leaderboard_snapshot(room)
-        room_payload['globalLeaderboard'] = LEADERBOARD_STORE['brands_hatch'][leaderboard_category(room.laps_to_win)]
+        room_payload['globalLeaderboard'] = LEADERBOARD_STORE[room.track_id][leaderboard_category(room.laps_to_win)]
 
     payload = {
         'type': 'state',
@@ -270,7 +404,13 @@ async def broadcast_room_state(room: RoomState):
                 'vx': p.vx,
                 'vy': p.vy,
                 'speed': math.sqrt(p.vx * p.vx + p.vy * p.vy),
-                'turnState': (-1 if p.input_state.left and not p.input_state.right else 1 if p.input_state.right and not p.input_state.left else 0),
+                'turnState': (
+                    -1 if p.input_state.steer < -0.1
+                    else 1 if p.input_state.steer > 0.1
+                    else -1 if p.input_state.left and not p.input_state.right
+                    else 1 if p.input_state.right and not p.input_state.left
+                    else 0
+                ),
                 'isDrifting': bool(p.input_state.handbrake and math.sqrt(p.vx * p.vx + p.vy * p.vy) > 50),
                 'ready': p.ready,
                 'laps': p.laps,
@@ -294,10 +434,10 @@ def set_player_car(player: PlayerState, car_id: int):
     player.grip_state = WEB_CAR_MODELS[car_id]['grip']
 
 
-def reset_player_for_race(player: PlayerState, index_in_grid: int):
+def reset_player_for_race(room: RoomState, player: PlayerState, index_in_grid: int):
     spawn_spacing = 18
-    player.x = SPAWN_X + index_in_grid * spawn_spacing
-    player.y = SPAWN_Y
+    player.x = room.spawn_x + index_in_grid * spawn_spacing
+    player.y = room.spawn_y
     player.rotation_deg = 90
     player.vx = 0.0
     player.vy = 0.0
@@ -322,7 +462,7 @@ def start_countdown(room: RoomState):
     room.countdown_end_time = now_seconds() + 3.0
 
     for idx, player in enumerate(room.players.values()):
-        reset_player_for_race(player, idx)
+        reset_player_for_race(room, player, idx)
 
 
 def maybe_begin_race(room: RoomState):
@@ -337,7 +477,7 @@ def maybe_begin_race(room: RoomState):
         player.lap_start_time = room.race_start_time
 
 
-def step_player_physics(player: PlayerState, dt: float):
+def step_player_physics(room: RoomState, player: PlayerState, dt: float):
     car = WEB_CAR_MODELS[player.car_id]
     accel = car['accel']
     brake_accel = car['accel'] * 0.5
@@ -345,18 +485,22 @@ def step_player_physics(player: PlayerState, dt: float):
     drag = car['drag']
     friction = car['friction']
     base_grip = car['grip']
-    turn_rate = 200.0
+    turn_rate = 150.0
 
     if player.finished:
         player.vx *= 0.9
         player.vy *= 0.9
         return
 
-    turn_dir = 0.0
-    if player.input_state.left:
-        turn_dir -= 1.0
-    if player.input_state.right:
-        turn_dir += 1.0
+    analog_steer = max(-1.0, min(1.0, float(player.input_state.steer)))
+    if abs(analog_steer) < 0.05:
+        turn_dir = 0.0
+        if player.input_state.left:
+            turn_dir -= 1.0
+        if player.input_state.right:
+            turn_dir += 1.0
+    else:
+        turn_dir = analog_steer
 
     speed = math.sqrt(player.vx * player.vx + player.vy * player.vy)
     if speed > 2 and turn_dir != 0.0:
@@ -367,12 +511,19 @@ def step_player_physics(player: PlayerState, dt: float):
     fx = math.cos(radians)
     fy = math.sin(radians)
 
-    if player.input_state.up:
-        player.vx -= fx * accel * dt
-        player.vy -= fy * accel * dt
-    if player.input_state.down:
-        player.vx += fx * brake_accel * dt
-        player.vy += fy * brake_accel * dt
+    throttle_amount = max(0.0, min(1.0, float(player.input_state.throttle)))
+    brake_amount = max(0.0, min(1.0, float(player.input_state.brake)))
+    if throttle_amount <= 0 and player.input_state.up:
+        throttle_amount = 1.0
+    if brake_amount <= 0 and player.input_state.down:
+        brake_amount = 1.0
+
+    if throttle_amount > 0:
+        player.vx -= fx * accel * throttle_amount * dt
+        player.vy -= fy * accel * throttle_amount * dt
+    if brake_amount > 0:
+        player.vx += fx * brake_accel * brake_amount * dt
+        player.vy += fy * brake_accel * brake_amount * dt
 
     speed = math.sqrt(player.vx * player.vx + player.vy * player.vy)
     if speed > 0.0001:
@@ -433,7 +584,7 @@ def step_player_physics(player: PlayerState, dt: float):
     for _ in range(steps):
         next_x = player.x + step_x
         next_y = player.y + step_y
-        if is_on_road(next_x, next_y):
+        if is_on_road(room, next_x, next_y):
             player.x = next_x
             player.y = next_y
         else:
@@ -499,7 +650,7 @@ def update_laps_and_finish(room: RoomState):
         if player.finished:
             continue
 
-        tile = current_tile(player.x, player.y)
+        tile = current_tile(room, player.x, player.y)
 
         if tile == 'C':
             player.checkpoint_passed = True
@@ -519,7 +670,7 @@ def update_laps_and_finish(room: RoomState):
                 player.race_total_time = (now - room.race_start_time) * 1000.0
                 if room.winner_id is None:
                     room.winner_id = player.player_id
-                    update_global_leaderboard(player, room.laps_to_win)
+                    update_global_leaderboard(room.track_id, player, room.laps_to_win)
                     room.phase = 'finished'
 
 
@@ -549,7 +700,7 @@ async def room_tick_loop(room: RoomState):
             if room.phase == 'racing':
                 player_list = list(room.players.values())
                 for player in player_list:
-                    step_player_physics(player, dt)
+                    step_player_physics(room, player, dt)
                 solve_car_collisions(player_list)
                 update_laps_and_finish(room)
 
@@ -578,8 +729,8 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
     player = PlayerState(
         player_id=player_id,
         name=player_name[:18] or 'Player',
-        x=SPAWN_X + len(room.players) * 18,
-        y=SPAWN_Y,
+        x=room.spawn_x + len(room.players) * 18,
+        y=room.spawn_y,
         rotation_deg=90,
         websocket=websocket,
     )
@@ -595,13 +746,8 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
             'type': 'welcome',
             'playerId': player_id,
             'roomId': room_id,
-            'map': {
-                'name': 'brands_hatch',
-                'tileSize': TILESIZE,
-                'widthTiles': TRACK_WIDTH_TILES,
-                'heightTiles': TRACK_HEIGHT_TILES,
-                'rows': BRANDS_HATCH_MAP,
-            },
+            'map': room_map_payload(room),
+            'tracks': available_tracks_payload(),
             'cars': WEB_CAR_MODELS,
         },
     )
@@ -621,6 +767,9 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
                     left=bool(input_payload.get('left', False)),
                     right=bool(input_payload.get('right', False)),
                     handbrake=bool(input_payload.get('handbrake', False)),
+                    throttle=max(0.0, min(1.0, safe_float(input_payload.get('throttle', 0.0), 0.0))),
+                    brake=max(0.0, min(1.0, safe_float(input_payload.get('brake', 0.0), 0.0))),
+                    steer=max(-1.0, min(1.0, safe_float(input_payload.get('steer', 0.0), 0.0))),
                 )
 
             elif msg_type == 'garage':
@@ -632,6 +781,46 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
                 if room.phase in ('lobby', 'finished'):
                     room.laps_to_win = max(1, min(5, requested_laps))
                     player.ready = requested_ready
+
+            elif msg_type == 'set_track':
+                if room.phase not in ('lobby', 'finished'):
+                    await safe_send_json(
+                        websocket,
+                        {
+                            'type': 'error',
+                            'message': 'Track can only be changed in lobby or after race finish.',
+                        },
+                    )
+                else:
+                    requested_track_id = str(message.get('trackId', DEFAULT_TRACK['id']))
+
+                    if requested_track_id == CUSTOM_TRACK_ID:
+                        raw_map = str(message.get('customMap', ''))
+                        custom_rows = raw_map.splitlines()
+                        is_valid, error_message, validated_rows = validate_map_rows(custom_rows)
+                        if not is_valid:
+                            await safe_send_json(
+                                websocket,
+                                {
+                                    'type': 'error',
+                                    'message': error_message,
+                                },
+                            )
+                        else:
+                            set_room_track(room, CUSTOM_TRACK_ID, validated_rows, f'Custom by {player.name}')
+                            await broadcast_room_map(room)
+                    elif requested_track_id in PRESET_TRACKS:
+                        preset = PRESET_TRACKS[requested_track_id]
+                        set_room_track(room, preset['id'], preset['rows'], preset['name'])
+                        await broadcast_room_map(room)
+                    else:
+                        await safe_send_json(
+                            websocket,
+                            {
+                                'type': 'error',
+                                'message': 'Unknown track selection.',
+                            },
+                        )
 
             elif msg_type == 'start_race':
                 if room.phase in ('lobby', 'finished') and room.players:
