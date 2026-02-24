@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Racing Game Online</title>
+  <link rel="stylesheet" href="/client/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <div class="hud">
+      <h1>Racing Game Online (Beta)</h1>
+      <div class="controls-row top-row">
+        <label>Room
+          <input id="roomInput" value="brands-public" maxlength="24" />
+        </label>
+        <label>Name
+          <input id="nameInput" value="Player" maxlength="18" />
+        </label>
+        <button id="connectBtn">Connect</button>
+      </div>
+
+      <div class="controls-row">
+        <label>Garage Car
+          <select id="carSelect"></select>
+        </label>
+        <label>Laps
+          <select id="lapsSelect">
+            <option value="1">1</option>
+            <option value="3" selected>3</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+        <button id="readyBtn">Ready</button>
+        <button id="startRaceBtn">Start Race</button>
+        <button id="resetLobbyBtn">Reset Lobby</button>
+      </div>
+
+      <p id="statusText">Disconnected</p>
+      <p id="phaseText">Phase: lobby</p>
+      <p class="hint">Controls: WASD/Arrows drive, Space = handbrake</p>
+
+      <div class="panels">
+        <div class="panel-block">
+          <h3>Room Leaderboard</h3>
+          <ul id="roomLeaderboard"></ul>
+        </div>
+        <div class="panel-block">
+          <h3>Global Leaderboard</h3>
+          <ul id="globalLeaderboard"></ul>
+        </div>
+      </div>
+    </div>
+
+    <canvas id="gameCanvas" width="1024" height="768"></canvas>
+  </div>
+
+  <script type="module" src="/client/app.js"></script>
+</body>
+</html>
