@@ -38,6 +38,14 @@ let roomState = {
   globalLeaderboard: [],
 };
 
+const INTERPOLATION_BACK_TIME_MS = 90;
+const REMOTE_EXTRAPOLATION_LIMIT_MS = 80;
+const SELF_RECONCILE_BLEND = 0.35;
+let serverClockOffsetMs = 0;
+const playerNetState = {};
+let lastInputSignature = '';
+let lastInputSentAt = 0;
+
 const inputState = {
   up: false,
   down: false,
@@ -63,6 +71,161 @@ function formatMs(ms) {
   const s = Math.floor((total % 60000) / 1000);
   const t = total % 1000;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(t).padStart(3, '0')}`;
+}
+
+function normalizeAngleDeg(degrees) {
+  let value = degrees % 360;
+  if (value > 180) value -= 360;
+  if (value < -180) value += 360;
+  return value;
+}
+
+function lerp(start, end, t) {
+  return start + (end - start) * t;
+}
+
+function lerpAngleDeg(start, end, t) {
+  const delta = normalizeAngleDeg(end - start);
+  return start + delta * t;
+}
+
+function inputSignature() {
+  return [
+    inputState.up ? 1 : 0,
+    inputState.down ? 1 : 0,
+    inputState.left ? 1 : 0,
+    inputState.right ? 1 : 0,
+    inputState.handbrake ? 1 : 0,
+  ].join('');
+}
+
+function sendInputUpdate(force = false) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+  const now = performance.now();
+  const signature = inputSignature();
+  const changed = signature !== lastInputSignature;
+  const enoughTimePassed = now - lastInputSentAt >= 60;
+  const keepaliveDue = now - lastInputSentAt >= 180;
+
+  if (!force && !changed && !keepaliveDue) {
+    return;
+  }
+  if (!force && changed && !enoughTimePassed) {
+    return;
+  }
+
+  send('input', { input: inputState });
+  lastInputSignature = signature;
+  lastInputSentAt = now;
+}
+
+function updateServerClockOffset(serverTimeSeconds) {
+  if (typeof serverTimeSeconds !== 'number') return;
+  const sampleOffset = serverTimeSeconds * 1000 - performance.now();
+  if (!Number.isFinite(serverClockOffsetMs) || serverClockOffsetMs === 0) {
+    serverClockOffsetMs = sampleOffset;
+    return;
+  }
+  serverClockOffsetMs += (sampleOffset - serverClockOffsetMs) * 0.08;
+}
+
+function ingestPlayerState(serverPlayers, serverTimeSeconds) {
+  const serverTimeMs = typeof serverTimeSeconds === 'number'
+    ? serverTimeSeconds * 1000
+    : performance.now() + serverClockOffsetMs;
+
+  players = serverPlayers || [];
+  const activeIds = new Set();
+
+  for (const player of players) {
+    activeIds.add(player.id);
+    const state = playerNetState[player.id];
+
+    if (!state) {
+      playerNetState[player.id] = {
+        prevX: player.x,
+        prevY: player.y,
+        prevRot: player.rotationDeg,
+        prevServerMs: serverTimeMs,
+        targetX: player.x,
+        targetY: player.y,
+        targetRot: player.rotationDeg,
+        targetServerMs: serverTimeMs,
+        velocityX: 0,
+        velocityY: 0,
+        rotationVelocity: 0,
+      };
+      continue;
+    }
+
+    const dtMs = Math.max(1, serverTimeMs - state.targetServerMs);
+    state.prevX = state.targetX;
+    state.prevY = state.targetY;
+    state.prevRot = state.targetRot;
+    state.prevServerMs = state.targetServerMs;
+
+    state.targetX = player.x;
+    state.targetY = player.y;
+    state.targetRot = player.rotationDeg;
+    state.targetServerMs = serverTimeMs;
+
+    state.velocityX = (state.targetX - state.prevX) / (dtMs / 1000);
+    state.velocityY = (state.targetY - state.prevY) / (dtMs / 1000);
+    state.rotationVelocity = normalizeAngleDeg(state.targetRot - state.prevRot) / (dtMs / 1000);
+  }
+
+  for (const id of Object.keys(playerNetState)) {
+    if (!activeIds.has(id)) {
+      delete playerNetState[id];
+      delete tireTrackState[id];
+      delete lastParticleSpawnByPlayer[id];
+      delete lastTireMarkSpawnByPlayer[id];
+    }
+  }
+}
+
+function getRenderedPlayers(renderTimeMs) {
+  const sampledServerMs = renderTimeMs + serverClockOffsetMs - INTERPOLATION_BACK_TIME_MS;
+
+  return players.map((player) => {
+    const net = playerNetState[player.id];
+    if (!net) {
+      return player;
+    }
+
+    const dt = net.targetServerMs - net.prevServerMs;
+    let x = net.targetX;
+    let y = net.targetY;
+    let rotationDeg = net.targetRot;
+
+    if (dt > 0 && sampledServerMs <= net.targetServerMs) {
+      const t = Math.max(0, Math.min(1, (sampledServerMs - net.prevServerMs) / dt));
+      x = lerp(net.prevX, net.targetX, t);
+      y = lerp(net.prevY, net.targetY, t);
+      rotationDeg = lerpAngleDeg(net.prevRot, net.targetRot, t);
+    } else {
+      const extraMs = Math.max(0, sampledServerMs - net.targetServerMs);
+      const cappedMs = Math.min(REMOTE_EXTRAPOLATION_LIMIT_MS, extraMs);
+      const extraSec = cappedMs / 1000;
+      x = net.targetX + net.velocityX * extraSec;
+      y = net.targetY + net.velocityY * extraSec;
+      rotationDeg = net.targetRot + net.rotationVelocity * extraSec;
+    }
+
+    if (player.id === playerId) {
+      x = lerp(player.x, x, SELF_RECONCILE_BLEND);
+      y = lerp(player.y, y, SELF_RECONCILE_BLEND);
+      rotationDeg = lerpAngleDeg(player.rotationDeg, rotationDeg, SELF_RECONCILE_BLEND);
+    }
+
+    return {
+      ...player,
+      x,
+      y,
+      rotationDeg,
+    };
+  });
 }
 
 function tileNoise(x, y, seed = 1) {
@@ -141,6 +304,8 @@ function connect() {
   socket.onclose = () => {
     connected = false;
     playerId = null;
+    players = [];
+    Object.keys(playerNetState).forEach((id) => delete playerNetState[id]);
     setStatus('Disconnected', true);
   };
 
@@ -165,7 +330,8 @@ function connect() {
     }
 
     if (message.type === 'state') {
-      players = message.players || [];
+      updateServerClockOffset(message.serverTime);
+      ingestPlayerState(message.players || [], message.serverTime);
       roomState = message.room || roomState;
       lapsSelect.value = String(roomState.lapsToWin || 3);
       refreshLeaderboards();
@@ -330,6 +496,7 @@ function setKeyState(key, code, pressed) {
 
 window.addEventListener('keydown', (e) => {
   setKeyState(e.key, e.code, true);
+  sendInputUpdate();
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
     e.preventDefault();
   }
@@ -337,12 +504,12 @@ window.addEventListener('keydown', (e) => {
 
 window.addEventListener('keyup', (e) => {
   setKeyState(e.key, e.code, false);
+  sendInputUpdate();
 });
 
 setInterval(() => {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  send('input', { input: inputState });
-}, 1000 / 30);
+  sendInputUpdate(true);
+}, 1000 / 20);
 
 function drawMap() {
   if (!mapData || !mapBuffer) {
@@ -577,7 +744,8 @@ function render(ts = 0) {
   drawMap();
   updateAndDrawTireMarks(dt);
   updateAndDrawParticles(dt);
-  for (const p of players) {
+  const renderedPlayers = getRenderedPlayers(ts);
+  for (const p of renderedPlayers) {
     drawPlayer(p);
   }
 

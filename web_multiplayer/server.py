@@ -15,12 +15,17 @@ from settings import BRANDS_HATCH_MAP, CAR_MODELS, TILESIZE
 
 
 ROAD_TILES = {'.', 'P', 'F', 'C'}
-TICK_HZ = 30
+TICK_HZ = 60
 CAR_COLLISION_RADIUS = 12.0
 LEADERBOARD_FILE = Path(__file__).parent / 'web_leaderboard.json'
+TIME_EPOCH_OFFSET = time.time() - time.perf_counter()
 
 TRACK_WIDTH_TILES = len(BRANDS_HATCH_MAP[0])
 TRACK_HEIGHT_TILES = len(BRANDS_HATCH_MAP)
+
+
+def now_seconds() -> float:
+    return TIME_EPOCH_OFFSET + time.perf_counter()
 
 
 def rgb_to_hex(rgb):
@@ -226,7 +231,7 @@ def room_leaderboard_snapshot(room: RoomState):
 
 
 async def broadcast_room_state(room: RoomState):
-    now = time.time()
+    now = now_seconds()
     payload = {
         'type': 'state',
         'serverTime': now,
@@ -261,8 +266,9 @@ async def broadcast_room_state(room: RoomState):
         ],
     }
 
-    for player in list(room.players.values()):
-        await safe_send_json(player.websocket, payload)
+    recipients = [player.websocket for player in list(room.players.values())]
+    if recipients:
+        await asyncio.gather(*(safe_send_json(socket, payload) for socket in recipients), return_exceptions=True)
 
 
 def set_player_car(player: PlayerState, car_id: int):
@@ -285,7 +291,7 @@ def reset_player_for_race(player: PlayerState, index_in_grid: int):
     player.laps = 0
     player.checkpoint_passed = False
     player.last_finish_cross_time = 0.0
-    player.lap_start_time = time.time()
+    player.lap_start_time = now_seconds()
     player.best_lap_time = 0.0
     player.race_total_time = 0.0
     player.input_state = InputState()
@@ -298,7 +304,7 @@ def start_countdown(room: RoomState):
 
     room.phase = 'countdown'
     room.winner_id = None
-    room.countdown_end_time = time.time() + 3.0
+    room.countdown_end_time = now_seconds() + 3.0
 
     for idx, player in enumerate(room.players.values()):
         reset_player_for_race(player, idx)
@@ -307,11 +313,11 @@ def start_countdown(room: RoomState):
 def maybe_begin_race(room: RoomState):
     if room.phase != 'countdown':
         return
-    if time.time() < room.countdown_end_time:
+    if now_seconds() < room.countdown_end_time:
         return
 
     room.phase = 'racing'
-    room.race_start_time = time.time()
+    room.race_start_time = now_seconds()
     for player in room.players.values():
         player.lap_start_time = room.race_start_time
 
@@ -465,7 +471,7 @@ def update_laps_and_finish(room: RoomState):
     if room.phase != 'racing':
         return
 
-    now = time.time()
+    now = now_seconds()
 
     for player in room.players.values():
         if player.finished:
@@ -507,6 +513,7 @@ def get_or_create_room(room_id: str) -> RoomState:
 
 async def room_tick_loop(room: RoomState):
     dt = 1.0 / TICK_HZ
+    next_tick = now_seconds()
 
     try:
         while True:
@@ -525,7 +532,13 @@ async def room_tick_loop(room: RoomState):
                 update_laps_and_finish(room)
 
             await broadcast_room_state(room)
-            await asyncio.sleep(dt)
+
+            next_tick += dt
+            sleep_for = next_tick - now_seconds()
+            if sleep_for > 0:
+                await asyncio.sleep(sleep_for)
+            else:
+                next_tick = now_seconds()
     finally:
         room.tick_task = None
         if not room.players and room.room_id in ROOMS:
