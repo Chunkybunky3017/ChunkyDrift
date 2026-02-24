@@ -1,4 +1,7 @@
-import pygame
+try:
+    import pygame
+except ModuleNotFoundError:
+    pygame = None
 
 # Colors
 WHITE = (255, 255, 255)
@@ -178,7 +181,7 @@ STUNT_MAP = [
 PLAYER_SPEED = 400
 PLAYER_ROT_SPEED = 200
 PLAYER_MAX_SPEED = 500
-PLAYER_HIT_RECT = pygame.Rect(0, 0, 15, 15)
+PLAYER_HIT_RECT = pygame.Rect(0, 0, 15, 15) if pygame else (0, 0, 15, 15)
 BARREL_OFFSET = (20, 10)
 
 # Car Models
