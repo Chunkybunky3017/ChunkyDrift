@@ -44,12 +44,20 @@ TEXT_COLOR = (230, 230, 230)
 HIGHLIGHT = (255, 220, 0)
 
 BUILTIN_TRACKS = [
-    {'id': 'brands_hatch', 'name': 'Brands Hatch', 'rows': BRANDS_HATCH_MAP},
-    {'id': 'rally_loop', 'name': 'Rally Loop', 'rows': GAME_MAP},
-    {'id': 'stunt_track', 'name': 'Stunt Track', 'rows': STUNT_MAP},
+    {'id': 'brands_hatch', 'name': 'Brands Hatch', 'rows': BRANDS_HATCH_MAP, 'spawnRotationDeg': 90.0},
+    {'id': 'rally_loop', 'name': 'Rally Loop', 'rows': GAME_MAP, 'spawnRotationDeg': 180.0},
+    {'id': 'stunt_track', 'name': 'Stunt Track', 'rows': STUNT_MAP, 'spawnRotationDeg': 90.0},
 ]
 
 CUSTOM_TRACKS_FILE = Path(__file__).parent / 'web_multiplayer' / 'custom_tracks.json'
+DEFAULT_SPAWN_ROTATION_DEG = 90.0
+SPAWN_ROTATIONS = [0.0, 90.0, 180.0, 270.0]
+SPAWN_LABELS = {
+    0.0: 'Left',
+    90.0: 'Up',
+    180.0: 'Right',
+    270.0: 'Down',
+}
 
 
 def slugify_track_id(name):
@@ -59,6 +67,21 @@ def slugify_track_id(name):
 
 def normalize_rows(rows):
     return [str(row).rstrip('\n\r') for row in rows if str(row).strip()]
+
+
+def normalize_spawn_rotation(value, default=DEFAULT_SPAWN_ROTATION_DEG):
+    try:
+        rotation = float(value)
+    except (TypeError, ValueError):
+        rotation = float(default)
+
+    while rotation < 0:
+        rotation += 360
+    while rotation >= 360:
+        rotation -= 360
+
+    closest = min(SPAWN_ROTATIONS, key=lambda option: abs(option - rotation))
+    return float(closest)
 
 
 def load_custom_tracks(path):
@@ -78,7 +101,14 @@ def load_custom_tracks(path):
             width = len(rows[0])
             if width == 0 or any(len(row) != width for row in rows):
                 continue
-            tracks.append({'id': track_id, 'name': name, 'rows': rows})
+            tracks.append(
+                {
+                    'id': track_id,
+                    'name': name,
+                    'rows': rows,
+                    'spawnRotationDeg': normalize_spawn_rotation(item.get('spawnRotationDeg', DEFAULT_SPAWN_ROTATION_DEG)),
+                }
+            )
         return tracks
     except Exception:
         return []
@@ -119,7 +149,9 @@ def choose_existing_track():
 
     print('\nAvailable tracks to edit:')
     for index, track in enumerate(combined, start=1):
-        print(f"{index}) {track['name']} [{track['id']}] ({len(track['rows'][0])}x{len(track['rows'])})")
+        rotation = normalize_spawn_rotation(track.get('spawnRotationDeg', DEFAULT_SPAWN_ROTATION_DEG))
+        facing = SPAWN_LABELS.get(rotation, str(int(rotation)))
+        print(f"{index}) {track['name']} [{track['id']}] ({len(track['rows'][0])}x{len(track['rows'])}) Spawn:{facing}")
 
     while True:
         raw = input(f'Select track 1-{len(combined)}: ').strip()
@@ -152,17 +184,27 @@ def create_new_track_definition():
     if center_x + 2 < width:
         rows[center_y] = rows[center_y][:center_x + 2] + 'C' + rows[center_y][center_x + 3:]
 
-    return {'id': track_id, 'name': name, 'rows': rows}
+    spawn_raw = input('Spawn direction (up/right/down/left) [up]: ').strip().lower()
+    spawn_map = {
+        'up': 90.0,
+        'right': 180.0,
+        'down': 270.0,
+        'left': 0.0,
+    }
+    spawn_rotation_deg = spawn_map.get(spawn_raw, 90.0)
+
+    return {'id': track_id, 'name': name, 'rows': rows, 'spawnRotationDeg': spawn_rotation_deg}
 
 
 class TrackEditor:
-    def __init__(self, track_id, track_name, initial_rows):
+    def __init__(self, track_id, track_name, initial_rows, spawn_rotation_deg=DEFAULT_SPAWN_ROTATION_DEG):
         pygame.init()
         self.font = pygame.font.SysFont('consolas', 18)
         self.small_font = pygame.font.SysFont('consolas', 15)
 
         self.track_id = track_id
         self.track_name = track_name
+        self.spawn_rotation_deg = normalize_spawn_rotation(spawn_rotation_deg)
         self.map_name = track_id.upper()
         self.map_height = len(initial_rows)
         self.map_width = len(initial_rows[0])
@@ -192,6 +234,13 @@ class TrackEditor:
 
     def set_status(self, text):
         self.status_text = text
+
+    def rotate_spawn_direction(self, step):
+        current_index = SPAWN_ROTATIONS.index(normalize_spawn_rotation(self.spawn_rotation_deg))
+        next_index = (current_index + step) % len(SPAWN_ROTATIONS)
+        self.spawn_rotation_deg = SPAWN_ROTATIONS[next_index]
+        facing = SPAWN_LABELS.get(self.spawn_rotation_deg, str(int(self.spawn_rotation_deg)))
+        self.set_status(f'Spawn direction set to {facing}')
 
     def map_bounds_check(self, col, row):
         return 0 <= row < self.map_height and 0 <= col < self.map_width
@@ -330,6 +379,7 @@ class TrackEditor:
             if track['id'] == self.track_id:
                 track['name'] = self.track_name
                 track['rows'] = rows
+                track['spawnRotationDeg'] = normalize_spawn_rotation(self.spawn_rotation_deg)
                 updated = True
                 break
 
@@ -339,6 +389,7 @@ class TrackEditor:
                     'id': self.track_id,
                     'name': self.track_name,
                     'rows': rows,
+                    'spawnRotationDeg': normalize_spawn_rotation(self.spawn_rotation_deg),
                 }
             )
 
@@ -385,6 +436,11 @@ class TrackEditor:
         self.screen.blit(map_title, (x, y))
         y += 26
 
+        spawn_label = SPAWN_LABELS.get(self.spawn_rotation_deg, str(int(self.spawn_rotation_deg)))
+        spawn_text = self.small_font.render(f'Spawn Facing: {spawn_label}', True, (255, 210, 120))
+        self.screen.blit(spawn_text, (x, y))
+        y += 24
+
         active_text = self.font.render(f'Tool: {TOOL_NAMES[self.current_tool]}', True, TEXT_COLOR)
         self.screen.blit(active_text, (x, y))
         y += 28
@@ -400,6 +456,7 @@ class TrackEditor:
             'E: Export Python list',
             'X: Export settings snippet',
             'K: Save/update this track for website selector',
+            'Q/E: Rotate spawn direction left/right',
             'ESC: Quit',
             '',
             'Tip: Start tile (P) is unique.',
@@ -438,6 +495,10 @@ class TrackEditor:
                     self.export_settings_snippet()
                 elif event.key == pygame.K_k:
                     self.save_to_web_tracks()
+                elif event.key == pygame.K_q:
+                    self.rotate_spawn_direction(-1)
+                elif event.key == pygame.K_e:
+                    self.rotate_spawn_direction(1)
 
         left, _, right = pygame.mouse.get_pressed()
         if not (left or right):
@@ -474,5 +535,6 @@ if __name__ == '__main__':
         selected_track['id'],
         selected_track['name'],
         selected_track['rows'],
+        selected_track.get('spawnRotationDeg', DEFAULT_SPAWN_ROTATION_DEG),
     )
     editor.run()

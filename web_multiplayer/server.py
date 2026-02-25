@@ -23,7 +23,7 @@ LEADERBOARD_PUSH_INTERVAL_SECONDS = 0.5
 CUSTOM_TRACK_ID = 'custom'
 ALLOWED_MAP_TILES = ROAD_TILES | {'1', 'W'}
 CUSTOM_TRACKS_FILE = Path(__file__).parent / 'custom_tracks.json'
-SPAWN_ROTATION_DEG = 180.0
+DEFAULT_SPAWN_ROTATION_DEG = 90.0
 SPAWN_Y_OFFSET = 4.0
 
 PRESET_TRACKS = {
@@ -31,11 +31,13 @@ PRESET_TRACKS = {
         'id': 'brands_hatch',
         'name': 'Brands Hatch',
         'rows': BRANDS_HATCH_MAP,
+        'spawnRotationDeg': 90.0,
     },
     'rally_loop': {
         'id': 'rally_loop',
         'name': 'Rally Loop',
         'rows': GAME_MAP,
+        'spawnRotationDeg': 180.0,
     },
 }
 
@@ -62,6 +64,7 @@ def load_persisted_tracks() -> dict:
             'id': track_id,
             'name': track_name,
             'rows': validated_rows,
+            'spawnRotationDeg': normalize_spawn_rotation(item.get('spawnRotationDeg', DEFAULT_SPAWN_ROTATION_DEG)),
         }
     return loaded
 
@@ -79,6 +82,15 @@ def safe_float(value, default=0.0):
         return float(value)
     except (TypeError, ValueError):
         return float(default)
+
+
+def normalize_spawn_rotation(value, default=DEFAULT_SPAWN_ROTATION_DEG):
+    rotation = safe_float(value, default)
+    while rotation < 0:
+        rotation += 360
+    while rotation >= 360:
+        rotation -= 360
+    return float(rotation)
 
 
 def find_spawn(rows: List[str]):
@@ -137,6 +149,7 @@ def room_map_payload(room):
     return {
         'id': room.track_id,
         'name': room.track_name,
+        'spawnRotationDeg': room.spawn_rotation_deg,
         'tileSize': TILESIZE,
         'widthTiles': room.track_width_tiles,
         'heightTiles': room.track_height_tiles,
@@ -212,6 +225,7 @@ class RoomState:
     track_height_tiles: int = len(DEFAULT_TRACK['rows'])
     spawn_x: float = DEFAULT_SPAWN_X
     spawn_y: float = DEFAULT_SPAWN_Y
+    spawn_rotation_deg: float = normalize_spawn_rotation(DEFAULT_TRACK.get('spawnRotationDeg', DEFAULT_SPAWN_ROTATION_DEG))
 
 
 ROOMS: Dict[str, RoomState] = {}
@@ -219,16 +233,24 @@ ROOMS: Dict[str, RoomState] = {}
 
 def available_tracks_payload():
     tracks = sorted(TRACK_LIBRARY.values(), key=lambda track: track['name'].lower())
-    return [{'id': track['id'], 'name': track['name']} for track in tracks]
+    return [
+        {
+            'id': track['id'],
+            'name': track['name'],
+            'spawnRotationDeg': normalize_spawn_rotation(track.get('spawnRotationDeg', DEFAULT_SPAWN_ROTATION_DEG)),
+        }
+        for track in tracks
+    ]
 
 
-def set_room_track(room: RoomState, track_id: str, rows: List[str], track_name: str):
+def set_room_track(room: RoomState, track_id: str, rows: List[str], track_name: str, spawn_rotation_deg: float):
     room.track_id = track_id
     room.track_name = track_name
     room.track_rows = list(rows)
     room.track_width_tiles = len(rows[0])
     room.track_height_tiles = len(rows)
     room.spawn_x, room.spawn_y = find_spawn(rows)
+    room.spawn_rotation_deg = normalize_spawn_rotation(spawn_rotation_deg, DEFAULT_SPAWN_ROTATION_DEG)
     room.phase = 'lobby'
     room.winner_id = None
     room.last_leaderboard_push_time = 0.0
@@ -469,7 +491,7 @@ def reset_player_for_race(room: RoomState, player: PlayerState, index_in_grid: i
     spawn_spacing = 18
     player.x = room.spawn_x + index_in_grid * spawn_spacing
     player.y = room.spawn_y
-    player.rotation_deg = SPAWN_ROTATION_DEG
+    player.rotation_deg = room.spawn_rotation_deg
     player.vx = 0.0
     player.vy = 0.0
     player.ready = False
@@ -762,7 +784,7 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
         name=player_name[:18] or 'Player',
         x=room.spawn_x + len(room.players) * 18,
         y=room.spawn_y,
-        rotation_deg=SPAWN_ROTATION_DEG,
+        rotation_deg=room.spawn_rotation_deg,
         websocket=websocket,
     )
     set_player_car(player, len(room.players) % max(1, len(WEB_CAR_MODELS)))
@@ -827,6 +849,7 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
 
                     if requested_track_id == CUSTOM_TRACK_ID:
                         raw_map = str(message.get('customMap', ''))
+                        requested_rotation = normalize_spawn_rotation(message.get('spawnRotationDeg', DEFAULT_SPAWN_ROTATION_DEG))
                         custom_rows = raw_map.splitlines()
                         is_valid, error_message, validated_rows = validate_map_rows(custom_rows)
                         if not is_valid:
@@ -838,11 +861,17 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
                                 },
                             )
                         else:
-                            set_room_track(room, CUSTOM_TRACK_ID, validated_rows, f'Custom by {player.name}')
+                            set_room_track(room, CUSTOM_TRACK_ID, validated_rows, f'Custom by {player.name}', requested_rotation)
                             await broadcast_room_map(room)
                     elif requested_track_id in TRACK_LIBRARY:
                         preset = TRACK_LIBRARY[requested_track_id]
-                        set_room_track(room, preset['id'], preset['rows'], preset['name'])
+                        set_room_track(
+                            room,
+                            preset['id'],
+                            preset['rows'],
+                            preset['name'],
+                            normalize_spawn_rotation(preset.get('spawnRotationDeg', DEFAULT_SPAWN_ROTATION_DEG)),
+                        )
                         await broadcast_room_map(room)
                     else:
                         await safe_send_json(

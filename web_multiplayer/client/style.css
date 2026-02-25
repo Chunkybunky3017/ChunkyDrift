@@ -223,6 +223,15 @@ body {
   padding: 4px 6px;
 }
 
+.map-editor-toolbar select {
+  width: 96px;
+  background: #0b1220;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
 .map-editor-toolbar button {
   height: 30px;
   border: none;

@@ -51,6 +51,14 @@
         <div class="map-editor-toolbar">
           <label>W <input id="mapWidthInput" type="number" min="16" max="128" value="64" /></label>
           <label>H <input id="mapHeightInput" type="number" min="12" max="96" value="48" /></label>
+          <label>Spawn
+            <select id="spawnDirectionSelect">
+              <option value="90">Up</option>
+              <option value="180">Right</option>
+              <option value="270">Down</option>
+              <option value="0">Left</option>
+            </select>
+          </label>
           <button id="resizeMapBtn" type="button">Resize</button>
           <button id="loadCurrentTrackBtn" type="button">Load Current Track</button>
           <button id="clearEditorBtn" type="button">Clear</button>

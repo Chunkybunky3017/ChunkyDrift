@@ -20,6 +20,7 @@ const customMapBox = document.getElementById('customMapBox');
 const closeDesignerBtn = document.getElementById('closeDesignerBtn');
 const mapWidthInput = document.getElementById('mapWidthInput');
 const mapHeightInput = document.getElementById('mapHeightInput');
+const spawnDirectionSelect = document.getElementById('spawnDirectionSelect');
 const resizeMapBtn = document.getElementById('resizeMapBtn');
 const loadCurrentTrackBtn = document.getElementById('loadCurrentTrackBtn');
 const clearEditorBtn = document.getElementById('clearEditorBtn');
@@ -444,6 +445,7 @@ function hostCustomMapFromEditor() {
   send('set_track', {
     trackId: 'custom',
     customMap,
+    spawnRotationDeg: Number(spawnDirectionSelect.value || 90),
   });
   setStatus('Hosting custom track from visual editor...');
 }
@@ -457,6 +459,7 @@ function hostCustomMapFromText() {
   send('set_track', {
     trackId: 'custom',
     customMap,
+    spawnRotationDeg: Number(spawnDirectionSelect.value || 90),
   });
   setStatus('Hosting custom track from text...');
 }
@@ -731,6 +734,9 @@ function connect() {
       playerId = message.playerId;
       mapData = message.map;
       buildMapBuffer();
+      if (message.map?.spawnRotationDeg !== undefined) {
+        spawnDirectionSelect.value = String(Math.round(Number(message.map.spawnRotationDeg)) % 360);
+      }
       if (!mapEditorState.hasManualChanges && mapData?.rows?.length) {
         setEditorRows(mapData.rows);
       }
@@ -748,6 +754,10 @@ function connect() {
       }
       populateTracks(mapData?.id || null);
       buildMapBuffer();
+      if (mapData?.spawnRotationDeg !== undefined) {
+        const rotation = ((Math.round(Number(mapData.spawnRotationDeg)) % 360) + 360) % 360;
+        spawnDirectionSelect.value = String(rotation);
+      }
       if (!mapEditorState.hasManualChanges && mapData?.rows?.length) {
         setEditorRows(mapData.rows);
       }
