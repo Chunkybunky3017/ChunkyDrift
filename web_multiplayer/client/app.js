@@ -40,6 +40,10 @@ const hudBestLap = document.getElementById('hudBestLap');
 const hudSpeed = document.getElementById('hudSpeed');
 const hudPing = document.getElementById('hudPing');
 const hudPhase = document.getElementById('hudPhase');
+const mobileLeftBtn = document.getElementById('mobileLeftBtn');
+const mobileRightBtn = document.getElementById('mobileRightBtn');
+const mobileAccelBtn = document.getElementById('mobileAccelBtn');
+const mobileDriftBtn = document.getElementById('mobileDriftBtn');
 
 let socket = null;
 let connected = false;
@@ -89,6 +93,13 @@ const gamepadState = {
   brake: 0,
   steer: 0,
   handbrake: false,
+};
+
+const touchControlState = {
+  left: false,
+  right: false,
+  accel: false,
+  drift: false,
 };
 
 const mapEditorState = {
@@ -159,17 +170,19 @@ function inputSignature() {
 }
 
 function composeInputPayload() {
-  const throttle = Math.max(inputState.up ? 1 : 0, gamepadState.throttle);
+  const throttle = Math.max(inputState.up ? 1 : 0, touchControlState.accel ? 1 : 0, gamepadState.throttle);
   const brake = Math.max(inputState.down ? 1 : 0, gamepadState.brake);
 
   let steer = gamepadState.steer;
-  if (inputState.left && !inputState.right) {
+  const leftPressed = inputState.left || touchControlState.left;
+  const rightPressed = inputState.right || touchControlState.right;
+  if (leftPressed && !rightPressed) {
     steer = Math.min(steer, -1);
-  } else if (inputState.right && !inputState.left) {
+  } else if (rightPressed && !leftPressed) {
     steer = Math.max(steer, 1);
   }
 
-  const handbrake = Boolean(keyboardHandbrake || gamepadState.handbrake);
+  const handbrake = Boolean(keyboardHandbrake || touchControlState.drift || gamepadState.handbrake);
 
   return {
     up: throttle > 0.05,
@@ -181,6 +194,42 @@ function composeInputPayload() {
     brake,
     steer,
   };
+}
+
+function bindMobileButton(button, key, activeClass = 'active') {
+  if (!button) return;
+
+  const setPressed = (pressed) => {
+    touchControlState[key] = pressed;
+    button.classList.toggle(activeClass, pressed);
+    sendInputUpdate(true);
+  };
+
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    setPressed(true);
+    try {
+      button.setPointerCapture(event.pointerId);
+    } catch {
+    }
+  });
+
+  const release = (event) => {
+    event.preventDefault();
+    setPressed(false);
+  };
+
+  button.addEventListener('pointerup', release);
+  button.addEventListener('pointercancel', release);
+  button.addEventListener('pointerleave', release);
+  button.addEventListener('lostpointercapture', () => setPressed(false));
+}
+
+function initMobileControls() {
+  bindMobileButton(mobileLeftBtn, 'left');
+  bindMobileButton(mobileRightBtn, 'right');
+  bindMobileButton(mobileAccelBtn, 'accel');
+  bindMobileButton(mobileDriftBtn, 'drift');
 }
 
 function sendInputUpdate(force = false) {
@@ -1284,4 +1333,5 @@ updateFullscreenButtonLabel();
 refreshRaceHud();
 initMapEditor();
 setDesignerOpen(false);
+initMobileControls();
 render();

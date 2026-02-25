@@ -102,6 +102,16 @@
 
     <div class="game-area" id="gameArea">
       <canvas id="gameCanvas" width="1024" height="768"></canvas>
+      <div class="mobile-controls" id="mobileControls" aria-label="Mobile controls">
+        <div class="mobile-left-controls">
+          <button id="mobileLeftBtn" class="mobile-control-btn" type="button">◀</button>
+          <button id="mobileRightBtn" class="mobile-control-btn" type="button">▶</button>
+        </div>
+        <div class="mobile-right-controls">
+          <button id="mobileDriftBtn" class="mobile-control-btn drift" type="button">DRIFT</button>
+          <button id="mobileAccelBtn" class="mobile-control-btn accel" type="button">ACCEL</button>
+        </div>
+      </div>
       <div class="race-info-box" id="raceInfoBox">
         <h3>Race Info</h3>
         <div class="race-info-row"><span>Lap</span><span id="hudLap">-</span></div>

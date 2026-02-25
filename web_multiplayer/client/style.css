@@ -400,3 +400,117 @@ body {
   top: 16px;
   right: 16px;
 }
+
+.mobile-controls {
+  display: none;
+}
+
+.mobile-control-btn {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #f8fafc;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  box-shadow: 0 8px 22px rgba(2, 6, 23, 0.35);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  touch-action: none;
+  user-select: none;
+}
+
+.mobile-control-btn.active {
+  background: rgba(37, 99, 235, 0.86);
+  border-color: rgba(191, 219, 254, 0.85);
+}
+
+.mobile-control-btn.accel.active {
+  background: rgba(16, 185, 129, 0.9);
+}
+
+.mobile-control-btn.drift.active {
+  background: rgba(245, 158, 11, 0.9);
+}
+
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+  .layout {
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .hud {
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .game-area {
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  #gameCanvas {
+    border-radius: 8px;
+  }
+
+  .race-info-box {
+    top: 8px;
+    right: 8px;
+    width: 168px;
+    padding: 6px 8px;
+  }
+
+  .race-info-box h3 {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .race-info-row {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  .mobile-controls {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+    pointer-events: none;
+    padding: 10px;
+  }
+
+  .mobile-left-controls,
+  .mobile-right-controls {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 10px;
+    pointer-events: none;
+  }
+
+  .mobile-left-controls {
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 10px;
+  }
+
+  .mobile-right-controls {
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  .mobile-control-btn {
+    pointer-events: auto;
+    width: 76px;
+    height: 64px;
+    font-size: 24px;
+  }
+
+  #mobileDriftBtn,
+  #mobileAccelBtn {
+    width: 96px;
+    height: 58px;
+    font-size: 14px;
+  }
+}
