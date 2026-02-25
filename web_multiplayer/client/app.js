@@ -43,6 +43,7 @@ const hudPhase = document.getElementById('hudPhase');
 const mobileLeftBtn = document.getElementById('mobileLeftBtn');
 const mobileRightBtn = document.getElementById('mobileRightBtn');
 const mobileAccelBtn = document.getElementById('mobileAccelBtn');
+const mobileReverseBtn = document.getElementById('mobileReverseBtn');
 const mobileDriftBtn = document.getElementById('mobileDriftBtn');
 
 let socket = null;
@@ -99,6 +100,7 @@ const touchControlState = {
   left: false,
   right: false,
   accel: false,
+  reverse: false,
   drift: false,
 };
 
@@ -171,7 +173,7 @@ function inputSignature() {
 
 function composeInputPayload() {
   const throttle = Math.max(inputState.up ? 1 : 0, touchControlState.accel ? 1 : 0, gamepadState.throttle);
-  const brake = Math.max(inputState.down ? 1 : 0, gamepadState.brake);
+  const brake = Math.max(inputState.down ? 1 : 0, touchControlState.reverse ? 1 : 0, gamepadState.brake);
 
   let steer = gamepadState.steer;
   const leftPressed = inputState.left || touchControlState.left;
@@ -238,6 +240,7 @@ function initMobileControls() {
   bindMobileButton(mobileLeftBtn, 'left');
   bindMobileButton(mobileRightBtn, 'right');
   bindMobileButton(mobileAccelBtn, 'accel');
+  bindMobileButton(mobileReverseBtn, 'reverse');
   bindMobileButton(mobileDriftBtn, 'drift');
 }
 
