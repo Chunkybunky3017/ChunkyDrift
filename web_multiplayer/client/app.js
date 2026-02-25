@@ -14,13 +14,14 @@ const applyTrackBtn = document.getElementById('applyTrackBtn');
 const openDesignerBtn = document.getElementById('openDesignerBtn');
 const customMapInput = document.getElementById('customMapInput');
 const hostCustomMapBtn = document.getElementById('hostCustomMapBtn');
+const textToEditorBtn = document.getElementById('textToEditorBtn');
+const hostTextMapBtn = document.getElementById('hostTextMapBtn');
 const customMapBox = document.getElementById('customMapBox');
 const closeDesignerBtn = document.getElementById('closeDesignerBtn');
 const mapWidthInput = document.getElementById('mapWidthInput');
 const mapHeightInput = document.getElementById('mapHeightInput');
 const resizeMapBtn = document.getElementById('resizeMapBtn');
 const loadCurrentTrackBtn = document.getElementById('loadCurrentTrackBtn');
-const editorToTextBtn = document.getElementById('editorToTextBtn');
 const clearEditorBtn = document.getElementById('clearEditorBtn');
 const mapEditorCanvas = document.getElementById('mapEditorCanvas');
 const mapEditorCtx = mapEditorCanvas.getContext('2d');
@@ -433,12 +434,22 @@ function applySelectedTrack() {
   send('set_track', { trackId: selected });
 }
 
-function hostCustomMap() {
-  let customMap = customMapInput.value.trim();
-  if (!customMap && mapEditorState.rows.length) {
-    customMap = exportEditorRows();
-    customMapInput.value = customMap;
+function hostCustomMapFromEditor() {
+  if (!mapEditorState.rows.length) {
+    setStatus('Map editor is empty.', true);
+    return;
   }
+  const customMap = exportEditorRows();
+  customMapInput.value = customMap;
+  send('set_track', {
+    trackId: 'custom',
+    customMap,
+  });
+  setStatus('Hosting custom track from visual editor...');
+}
+
+function hostCustomMapFromText() {
+  const customMap = customMapInput.value.trim();
   if (!customMap) {
     setStatus('Paste map rows before hosting a custom track.', true);
     return;
@@ -447,7 +458,7 @@ function hostCustomMap() {
     trackId: 'custom',
     customMap,
   });
-  setStatus('Hosting custom track for this room...');
+  setStatus('Hosting custom track from text...');
 }
 
 function setDesignerOpen(open) {
@@ -596,6 +607,25 @@ function syncEditorToText() {
   setStatus('Custom map text updated from editor.');
 }
 
+function loadTextIntoEditor() {
+  const raw = customMapInput.value.trim();
+  if (!raw) {
+    setStatus('Paste map rows in the text box first.', true);
+    return;
+  }
+  const rows = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (!rows.length) {
+    setStatus('No valid rows found in text.', true);
+    return;
+  }
+  if (!rows.every((row) => row.length === rows[0].length)) {
+    setStatus('All rows must be the same width.', true);
+    return;
+  }
+  setEditorRows(rows, true);
+  setStatus('Loaded text map into visual editor.');
+}
+
 function initMapEditor() {
   if (!mapEditorState.initialized) {
     setEditorRows(createEmptyEditorRows(mapEditorState.width, mapEditorState.height, '1'));
@@ -632,7 +662,12 @@ function initMapEditor() {
 
   resizeMapBtn.addEventListener('click', () => resizeEditorGrid());
   loadCurrentTrackBtn.addEventListener('click', () => loadCurrentTrackIntoEditor());
-  editorToTextBtn.addEventListener('click', () => syncEditorToText());
+  if (textToEditorBtn) {
+    textToEditorBtn.addEventListener('click', () => loadTextIntoEditor());
+  }
+  if (hostTextMapBtn) {
+    hostTextMapBtn.addEventListener('click', () => hostCustomMapFromText());
+  }
   clearEditorBtn.addEventListener('click', () => {
     setEditorRows(createEmptyEditorRows(mapEditorState.width, mapEditorState.height, '1'), true);
   });
@@ -897,7 +932,7 @@ trackSelect.addEventListener('change', () => {
   }
 });
 applyTrackBtn.addEventListener('click', () => applySelectedTrack());
-hostCustomMapBtn.addEventListener('click', () => hostCustomMap());
+hostCustomMapBtn.addEventListener('click', () => hostCustomMapFromEditor());
 openDesignerBtn.addEventListener('click', () => {
   const isHidden = customMapBox.classList.contains('hidden');
   setDesignerOpen(isHidden);

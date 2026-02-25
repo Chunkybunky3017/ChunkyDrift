@@ -47,14 +47,12 @@
           <h3>Map Designer</h3>
           <button id="closeDesignerBtn" type="button">Close</button>
         </div>
-        <label for="customMapInput">Custom Map (rows of 1 . P F C, one P required)</label>
-        <textarea id="customMapInput" rows="5" placeholder="Paste map rows here to host a custom track in this room..."></textarea>
+        <p class="designer-hint">Draw the track below, then click <strong>Host From Editor</strong>.</p>
         <div class="map-editor-toolbar">
           <label>W <input id="mapWidthInput" type="number" min="16" max="128" value="64" /></label>
           <label>H <input id="mapHeightInput" type="number" min="12" max="96" value="48" /></label>
           <button id="resizeMapBtn" type="button">Resize</button>
           <button id="loadCurrentTrackBtn" type="button">Load Current Track</button>
-          <button id="editorToTextBtn" type="button">Use In Text Box</button>
           <button id="clearEditorBtn" type="button">Clear</button>
         </div>
         <div class="map-editor-tiles">
@@ -65,7 +63,17 @@
           <button id="toolCheckpointBtn" class="tile-tool" data-tile="C" type="button">Checkpoint (C)</button>
         </div>
         <canvas id="mapEditorCanvas" width="768" height="384"></canvas>
-        <button id="hostCustomMapBtn">Host Custom Map</button>
+        <button id="hostCustomMapBtn">Host From Editor</button>
+
+        <details class="advanced-map-text">
+          <summary>Advanced: paste/edit raw map text</summary>
+          <label for="customMapInput">Rows using only 1 . P F C (exactly one P)</label>
+          <textarea id="customMapInput" rows="5" placeholder="Optional: paste map rows here..."></textarea>
+          <div class="advanced-map-actions">
+            <button id="textToEditorBtn" type="button">Load Text Into Editor</button>
+            <button id="hostTextMapBtn" type="button">Host From Text</button>
+          </div>
+        </details>
       </div>
 
       <p id="statusText">Disconnected</p>
