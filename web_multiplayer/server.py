@@ -23,6 +23,8 @@ LEADERBOARD_PUSH_INTERVAL_SECONDS = 0.5
 CUSTOM_TRACK_ID = 'custom'
 ALLOWED_MAP_TILES = ROAD_TILES | {'1', 'W'}
 CUSTOM_TRACKS_FILE = Path(__file__).parent / 'custom_tracks.json'
+SPAWN_ROTATION_DEG = 180.0
+SPAWN_Y_OFFSET = 4.0
 
 PRESET_TRACKS = {
     'brands_hatch': {
@@ -83,8 +85,8 @@ def find_spawn(rows: List[str]):
     for row_idx, row in enumerate(rows):
         col_idx = row.find('P')
         if col_idx != -1:
-            return (col_idx + 0.5) * TILESIZE, (row_idx + 0.5) * TILESIZE
-    return (8.5 * TILESIZE, 8.5 * TILESIZE)
+            return (col_idx + 0.5) * TILESIZE, (row_idx + 0.5) * TILESIZE + SPAWN_Y_OFFSET
+    return (8.5 * TILESIZE, 8.5 * TILESIZE + SPAWN_Y_OFFSET)
 
 
 def normalize_map_rows(rows: List[str]) -> List[str]:
@@ -467,7 +469,7 @@ def reset_player_for_race(room: RoomState, player: PlayerState, index_in_grid: i
     spawn_spacing = 18
     player.x = room.spawn_x + index_in_grid * spawn_spacing
     player.y = room.spawn_y
-    player.rotation_deg = 90
+    player.rotation_deg = SPAWN_ROTATION_DEG
     player.vx = 0.0
     player.vy = 0.0
     player.ready = False
@@ -760,7 +762,7 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
         name=player_name[:18] or 'Player',
         x=room.spawn_x + len(room.players) * 18,
         y=room.spawn_y,
-        rotation_deg=90,
+        rotation_deg=SPAWN_ROTATION_DEG,
         websocket=websocket,
     )
     set_player_car(player, len(room.players) % max(1, len(WEB_CAR_MODELS)))
