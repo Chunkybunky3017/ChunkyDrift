@@ -30,6 +30,25 @@ body {
   font-size: 20px;
 }
 
+.site-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.site-logo {
+  width: min(100%, 480px);
+  height: auto;
+  display: block;
+}
+
+.site-brand h1 {
+  margin: 0;
+  text-align: center;
+}
+
 .controls-row {
   display: flex;
   align-items: center;
