@@ -95,15 +95,51 @@ body {
   background: #8b5cf6;
 }
 
+#openDesignerBtn {
+  background: #0ea5e9;
+}
+
 #fullscreenBtn {
   background: #0ea5e9;
 }
 
 .custom-map-box {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.custom-map-box.hidden {
+  display: none;
+}
+
+.designer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.designer-header h3 {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 14px;
+}
+
+#closeDesignerBtn {
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #475569;
+  color: #e2e8f0;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .custom-map-box label {

@@ -36,12 +36,17 @@
           </select>
         </label>
         <button id="applyTrackBtn">Use Track</button>
+        <button id="openDesignerBtn">Map Designer</button>
         <button id="readyBtn">Ready</button>
         <button id="startRaceBtn">Start Race</button>
         <button id="resetLobbyBtn">Reset Lobby</button>
       </div>
 
-      <div class="custom-map-box">
+      <div class="custom-map-box" id="customMapBox">
+        <div class="designer-header">
+          <h3>Map Designer</h3>
+          <button id="closeDesignerBtn" type="button">Close</button>
+        </div>
         <label for="customMapInput">Custom Map (rows of 1 . P F C, one P required)</label>
         <textarea id="customMapInput" rows="5" placeholder="Paste map rows here to host a custom track in this room..."></textarea>
         <div class="map-editor-toolbar">

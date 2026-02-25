@@ -11,8 +11,11 @@ const resetLobbyBtn = document.getElementById('resetLobbyBtn');
 const carSelect = document.getElementById('carSelect');
 const trackSelect = document.getElementById('trackSelect');
 const applyTrackBtn = document.getElementById('applyTrackBtn');
+const openDesignerBtn = document.getElementById('openDesignerBtn');
 const customMapInput = document.getElementById('customMapInput');
 const hostCustomMapBtn = document.getElementById('hostCustomMapBtn');
+const customMapBox = document.getElementById('customMapBox');
+const closeDesignerBtn = document.getElementById('closeDesignerBtn');
 const mapWidthInput = document.getElementById('mapWidthInput');
 const mapHeightInput = document.getElementById('mapHeightInput');
 const resizeMapBtn = document.getElementById('resizeMapBtn');
@@ -431,7 +434,11 @@ function applySelectedTrack() {
 }
 
 function hostCustomMap() {
-  const customMap = customMapInput.value.trim();
+  let customMap = customMapInput.value.trim();
+  if (!customMap && mapEditorState.rows.length) {
+    customMap = exportEditorRows();
+    customMapInput.value = customMap;
+  }
   if (!customMap) {
     setStatus('Paste map rows before hosting a custom track.', true);
     return;
@@ -440,6 +447,12 @@ function hostCustomMap() {
     trackId: 'custom',
     customMap,
   });
+  setStatus('Hosting custom track for this room...');
+}
+
+function setDesignerOpen(open) {
+  customMapBox.classList.toggle('hidden', !open);
+  openDesignerBtn.textContent = open ? 'Hide Designer' : 'Map Designer';
 }
 
 function createEmptyEditorRows(width, height, fillTile = '1') {
@@ -885,6 +898,11 @@ trackSelect.addEventListener('change', () => {
 });
 applyTrackBtn.addEventListener('click', () => applySelectedTrack());
 hostCustomMapBtn.addEventListener('click', () => hostCustomMap());
+openDesignerBtn.addEventListener('click', () => {
+  const isHidden = customMapBox.classList.contains('hidden');
+  setDesignerOpen(isHidden);
+});
+closeDesignerBtn.addEventListener('click', () => setDesignerOpen(false));
 lapsSelect.addEventListener('change', () => sendGarage());
 fullscreenBtn.addEventListener('click', () => toggleFullscreen());
 document.addEventListener('fullscreenchange', updateFullscreenButtonLabel);
@@ -1220,4 +1238,5 @@ function render(ts = 0) {
 updateFullscreenButtonLabel();
 refreshRaceHud();
 initMapEditor();
+setDesignerOpen(false);
 render();
