@@ -32,6 +32,8 @@ const statusText = document.getElementById('statusText');
 const phaseText = document.getElementById('phaseText');
 const roomLeaderboard = document.getElementById('roomLeaderboard');
 const globalLeaderboard = document.getElementById('globalLeaderboard');
+const roomLeaderboardMoreBtn = document.getElementById('roomLeaderboardMoreBtn');
+const globalLeaderboardMoreBtn = document.getElementById('globalLeaderboardMoreBtn');
 const gameArea = document.getElementById('gameArea');
 const hudLap = document.getElementById('hudLap');
 const hudLapTime = document.getElementById('hudLapTime');
@@ -87,6 +89,9 @@ let lastInputSentAt = 0;
 let trackedLapCount = 0;
 let trackedLapStartRaceMs = 0;
 let keyboardHandbrake = false;
+const LEADERBOARD_PREVIEW_COUNT = 5;
+let showFullRoomLeaderboard = false;
+let showFullGlobalLeaderboard = false;
 
 const gamepadState = {
   connected: false,
@@ -985,14 +990,50 @@ function renderList(target, entries, formatter) {
   }
 }
 
+function renderLeaderboardWithToggle(target, toggleBtn, entries, formatter, showFull) {
+  const list = Array.isArray(entries) ? entries : [];
+  const hasMore = list.length > LEADERBOARD_PREVIEW_COUNT;
+  const visibleEntries = showFull ? list : list.slice(0, LEADERBOARD_PREVIEW_COUNT);
+
+  renderList(target, visibleEntries, formatter);
+
+  if (!toggleBtn) return;
+  toggleBtn.classList.toggle('hidden', !hasMore);
+  if (hasMore) {
+    toggleBtn.textContent = showFull ? 'Show less' : 'See more';
+  }
+}
+
 function refreshLeaderboards() {
-  renderList(roomLeaderboard, roomState.roomLeaderboard || [], (entry) =>
-    `${entry.name} — ${formatMs(entry.timeMs)} (${entry.carName})`
+  renderLeaderboardWithToggle(
+    roomLeaderboard,
+    roomLeaderboardMoreBtn,
+    roomState.roomLeaderboard || [],
+    (entry) => `${entry.name} — ${formatMs(entry.timeMs)} (${entry.carName})`,
+    showFullRoomLeaderboard
   );
 
-  renderList(globalLeaderboard, roomState.globalLeaderboard || [], (entry) =>
-    `${entry.name} — ${formatMs(entry.timeMs)} (${entry.carName})`
+  renderLeaderboardWithToggle(
+    globalLeaderboard,
+    globalLeaderboardMoreBtn,
+    roomState.globalLeaderboard || [],
+    (entry) => `${entry.name} — ${formatMs(entry.timeMs)} (${entry.carName})`,
+    showFullGlobalLeaderboard
   );
+}
+
+if (roomLeaderboardMoreBtn) {
+  roomLeaderboardMoreBtn.addEventListener('click', () => {
+    showFullRoomLeaderboard = !showFullRoomLeaderboard;
+    refreshLeaderboards();
+  });
+}
+
+if (globalLeaderboardMoreBtn) {
+  globalLeaderboardMoreBtn.addEventListener('click', () => {
+    showFullGlobalLeaderboard = !showFullGlobalLeaderboard;
+    refreshLeaderboards();
+  });
 }
 
 connectBtn.addEventListener('click', connect);
