@@ -462,44 +462,101 @@ body {
   letter-spacing: 0.03em;
   box-shadow: 0 8px 22px rgba(2, 6, 23, 0.35);
   backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  touch-action: none;
   user-select: none;
-}
 
 .mobile-control-btn.active {
   background: rgba(37, 99, 235, 0.86);
   border-color: rgba(191, 219, 254, 0.85);
-.mobile-control-btn.reverse.active {
+
+  .mobile-control-btn.reverse.active {
+    background: rgba(244, 63, 94, 0.9);
+  }
+
   background: rgba(244, 63, 94, 0.9);
 }
 }
 
 .mobile-control-btn.accel.active {
-  background: rgba(16, 185, 129, 0.9);
-}
-  gap: 14px;
+    body {
+      overflow-x: hidden;
 .mobile-control-btn.drift.active {
   background: rgba(245, 158, 11, 0.9);
-}
+    .layout {
+      padding: 6px;
+      gap: 8px;
+    }
+
+    .hud {
 
 @media (hover: none) and (pointer: coarse) {
+      border-radius: 8px;
+      padding: 8px;
   gap: 14px;
-    padding: 6px;
-    gap: 6px;
+
+    .hud h1 {
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+
+    .controls-row {
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .controls-row label {
+      font-size: 11px;
+      min-width: 0;
+      flex: 1 1 46%;
+    }
+
+    .controls-row input,
+    .controls-row select {
+      min-width: 0;
+      width: 100%;
+      padding: 6px 7px;
+    }
+
+    .controls-row button {
+      height: 32px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
+    .panels {
+      margin-top: 6px;
+      gap: 6px;
+      grid-template-columns: 1fr;
+    }
+
+    .panel-block {
+      padding: 6px;
+    }
+
+    .panel-block ul {
+      max-height: 80px;
+    }
+
+    .hint {
+      font-size: 12px;
+    }
+
+    .game-area {
   }
 
+      border-radius: 8px;
+      overflow: hidden;
   gap: 14px;
     width: 100%;
     max-width: 100vw;
-  }
-  width: 82px;
+      width: 100%;
+      max-width: 100vw;
+      border-radius: 8px;
   height: 68px;
     width: 100%;
     max-width: 100vw;
   }
 
-  #gameCanvas {
+      width: 156px;
   width: 104px;
   height: 62px;
 
@@ -518,6 +575,32 @@ body {
   .race-info-row {
     font-size: 11px;
     line-height: 1.3;
+  }
+
+  .mobile-touch .mobile-controls {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  .mobile-touch .mobile-left-controls,
+  .mobile-touch .mobile-right-controls {
+    gap: 10px;
+  }
+
+  .mobile-touch .mobile-control-btn {
+    width: 76px;
+    height: 62px;
+    font-size: 22px;
+  }
+
+  .mobile-touch #mobileReverseBtn,
+  .mobile-touch #mobileDriftBtn,
+  .mobile-touch #mobileAccelBtn {
+    width: 96px;
+    height: 56px;
+    font-size: 13px;
   }
 
 }
