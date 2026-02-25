@@ -226,6 +226,15 @@ function bindMobileButton(button, key, activeClass = 'active') {
 }
 
 function initMobileControls() {
+  const isTouchDevice =
+    ('ontouchstart' in window)
+    || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0)
+    || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
+  if (isTouchDevice) {
+    document.body.classList.add('mobile-touch');
+  }
+
   bindMobileButton(mobileLeftBtn, 'left');
   bindMobileButton(mobileRightBtn, 'right');
   bindMobileButton(mobileAccelBtn, 'accel');
@@ -290,6 +299,12 @@ async function toggleFullscreen() {
       await document.exitFullscreen();
     } else {
       await gameArea.requestFullscreen();
+      if (screen.orientation && screen.orientation.lock) {
+        try {
+          await screen.orientation.lock('landscape');
+        } catch {
+        }
+      }
     }
   } catch {
     setStatus('Fullscreen not supported in this browser', true);

@@ -353,6 +353,7 @@ body {
   border-radius: 8px;
   padding: 8px 10px;
   backdrop-filter: blur(1px);
+  z-index: 8;
 }
 
 .race-info-box h3 {
@@ -405,6 +406,52 @@ body {
   display: none;
 }
 
+.mobile-touch .mobile-controls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  pointer-events: none;
+  padding: 10px;
+  z-index: 20;
+}
+
+.mobile-touch .mobile-left-controls,
+.mobile-touch .mobile-right-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.mobile-touch .mobile-left-controls {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.mobile-touch .mobile-right-controls {
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.mobile-touch .mobile-control-btn {
+  pointer-events: auto;
+  width: 76px;
+  height: 64px;
+  font-size: 24px;
+}
+
+.mobile-touch #mobileDriftBtn,
+.mobile-touch #mobileAccelBtn {
+  width: 96px;
+  height: 58px;
+  font-size: 14px;
+}
+
 .mobile-control-btn {
   border: 1px solid rgba(148, 163, 184, 0.45);
   border-radius: 14px;
@@ -432,7 +479,7 @@ body {
   background: rgba(245, 158, 11, 0.9);
 }
 
-@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+@media (hover: none) and (pointer: coarse) {
   .layout {
     padding: 6px;
     gap: 6px;
@@ -469,48 +516,4 @@ body {
     line-height: 1.3;
   }
 
-  .mobile-controls {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: stretch;
-    pointer-events: none;
-    padding: 10px;
-  }
-
-  .mobile-left-controls,
-  .mobile-right-controls {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: 10px;
-    pointer-events: none;
-  }
-
-  .mobile-left-controls {
-    flex-direction: row;
-    align-items: flex-end;
-    gap: 10px;
-  }
-
-  .mobile-right-controls {
-    align-items: flex-end;
-    justify-content: flex-end;
-    gap: 12px;
-  }
-
-  .mobile-control-btn {
-    pointer-events: auto;
-    width: 76px;
-    height: 64px;
-    font-size: 24px;
-  }
-
-  #mobileDriftBtn,
-  #mobileAccelBtn {
-    width: 96px;
-    height: 58px;
-    font-size: 14px;
-  }
 }
