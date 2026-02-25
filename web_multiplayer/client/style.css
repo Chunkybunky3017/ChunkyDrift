@@ -345,8 +345,8 @@ body {
 
 .race-info-box {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
   width: 220px;
   background: rgba(11, 18, 32, 0.88);
   border: 1px solid #334155;
@@ -398,8 +398,8 @@ body {
 
 .game-area:fullscreen .race-info-box,
 .game-area:-webkit-full-screen .race-info-box {
-  top: 16px;
-  right: 16px;
+  top: max(20px, env(safe-area-inset-top));
+  right: max(20px, env(safe-area-inset-right));
 }
 
 .mobile-controls {
@@ -561,8 +561,8 @@ body {
   height: 62px;
 
   .race-info-box {
-    top: 8px;
-    right: 8px;
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
     width: 168px;
     padding: 6px 8px;
   }
