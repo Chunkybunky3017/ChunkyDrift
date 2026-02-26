@@ -8,10 +8,10 @@
 </head>
 <body>
   <div class="layout">
-    <div class="hud">
+    <div class="hud" id="hudMenu">
       <div class="site-brand">
-        <img src="/client/adobe-express.png" alt="Racing Game Logo" class="site-logo" />
-        <h1>Racing Game Online (Beta)</h1>
+        <img id="siteLogo" src="/client/adobe-express.png" alt="Racing Game Logo" class="site-logo" />
+        <h1 id="siteTitle">Racing Game Online (Beta)</h1>
       </div>
       <div class="controls-row top-row">
         <label>Room
@@ -44,6 +44,14 @@
         <button id="startRaceBtn">Start Race</button>
         <button id="resetLobbyBtn">Reset Lobby</button>
         <button id="respawnBtn">Respawn (R)</button>
+      </div>
+
+      <div class="track-preview-box">
+        <div class="track-preview-header">
+          <h3>Track Preview</h3>
+          <span id="trackPreviewName">Brands Hatch</span>
+        </div>
+        <canvas id="trackPreviewCanvas" width="220" height="132"></canvas>
       </div>
 
       <div class="custom-map-box" id="customMapBox">
@@ -90,16 +98,21 @@
 
       <p id="statusText">Disconnected</p>
       <p id="phaseText">Phase: lobby</p>
-      <p class="hint">Controls: WASD/Arrows drive, Left Shift = drift, R = reset to track center</p>
+      <p class="hint" id="controlsHint">Controls: WASD/Arrows drive, Left Shift = drift, R = reset to track center</p>
+      <div id="editableContent" class="editable-content"></div>
 
       <div class="panels">
         <div class="panel-block">
-          <h3>Room Leaderboard</h3>
+          <h3>Room Players</h3>
+          <ul id="roomPlayersList"></ul>
+        </div>
+        <div class="panel-block">
+          <h3 id="roomLeaderboardTitle">Room Leaderboard</h3>
           <ul id="roomLeaderboard"></ul>
           <button id="roomLeaderboardMoreBtn" class="leaderboard-more-btn" type="button">See more</button>
         </div>
         <div class="panel-block">
-          <h3>Global Leaderboard</h3>
+          <h3 id="globalLeaderboardTitle">Global Leaderboard</h3>
           <ul id="globalLeaderboard"></ul>
           <button id="globalLeaderboardMoreBtn" class="leaderboard-more-btn" type="button">See more</button>
         </div>

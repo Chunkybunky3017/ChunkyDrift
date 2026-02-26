@@ -1,3 +1,5 @@
+import { SITE_CONTENT } from '/client/site-content.js';
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -48,6 +50,17 @@ const mobileRightBtn = document.getElementById('mobileRightBtn');
 const mobileAccelBtn = document.getElementById('mobileAccelBtn');
 const mobileReverseBtn = document.getElementById('mobileReverseBtn');
 const mobileDriftBtn = document.getElementById('mobileDriftBtn');
+const siteLogo = document.getElementById('siteLogo');
+const siteTitle = document.getElementById('siteTitle');
+const controlsHint = document.getElementById('controlsHint');
+const roomLeaderboardTitle = document.getElementById('roomLeaderboardTitle');
+const globalLeaderboardTitle = document.getElementById('globalLeaderboardTitle');
+const editableContent = document.getElementById('editableContent');
+const hudMenu = document.getElementById('hudMenu');
+const roomPlayersList = document.getElementById('roomPlayersList');
+const trackPreviewCanvas = document.getElementById('trackPreviewCanvas');
+const trackPreviewCtx = trackPreviewCanvas ? trackPreviewCanvas.getContext('2d') : null;
+const trackPreviewName = document.getElementById('trackPreviewName');
 
 let socket = null;
 let connected = false;
@@ -90,6 +103,8 @@ let lastInputSentAt = 0;
 let trackedLapCount = 0;
 let trackedLapStartRaceMs = 0;
 let keyboardHandbrake = false;
+let hideHudRequested = false;
+let forceHudVisible = false;
 const LEADERBOARD_PREVIEW_COUNT = 5;
 let showFullRoomLeaderboard = false;
 let showFullGlobalLeaderboard = false;
@@ -127,6 +142,66 @@ const inputState = {
   right: false,
   handbrake: false,
 };
+
+function applySiteContent() {
+  const content = SITE_CONTENT || {};
+
+  if (content.pageTitle) {
+    document.title = content.pageTitle;
+  }
+
+  if (siteTitle && content.brandTitle) {
+    siteTitle.textContent = content.brandTitle;
+  }
+
+  if (siteLogo && content.logo?.src) {
+    siteLogo.src = content.logo.src;
+    if (content.logo.alt) {
+      siteLogo.alt = content.logo.alt;
+    }
+  }
+
+  if (roomInput && content.defaults?.room) {
+    roomInput.value = content.defaults.room;
+  }
+
+  if (nameInput && content.defaults?.name) {
+    nameInput.value = content.defaults.name;
+  }
+
+  if (controlsHint && content.controlsHint) {
+    controlsHint.textContent = content.controlsHint;
+  }
+
+  if (roomLeaderboardTitle && content.leaderboardTitles?.room) {
+    roomLeaderboardTitle.textContent = content.leaderboardTitles.room;
+  }
+
+  if (globalLeaderboardTitle && content.leaderboardTitles?.global) {
+    globalLeaderboardTitle.textContent = content.leaderboardTitles.global;
+  }
+
+  if (connectBtn && content.buttons?.connect) connectBtn.textContent = content.buttons.connect;
+  if (fullscreenBtn && content.buttons?.fullscreen) fullscreenBtn.textContent = content.buttons.fullscreen;
+  if (applyTrackBtn && content.buttons?.applyTrack) applyTrackBtn.textContent = content.buttons.applyTrack;
+  if (openDesignerBtn && content.buttons?.openDesigner) openDesignerBtn.textContent = content.buttons.openDesigner;
+  if (readyBtn && content.buttons?.ready) readyBtn.textContent = content.buttons.ready;
+  if (startRaceBtn && content.buttons?.startRace) startRaceBtn.textContent = content.buttons.startRace;
+  if (resetLobbyBtn && content.buttons?.resetLobby) resetLobbyBtn.textContent = content.buttons.resetLobby;
+  if (respawnBtn && content.buttons?.respawn) respawnBtn.textContent = content.buttons.respawn;
+
+  if (editableContent) {
+    editableContent.innerHTML = '';
+    const lines = Array.isArray(content.extraTextBlocks) ? content.extraTextBlocks : [];
+    for (const line of lines) {
+      const p = document.createElement('p');
+      p.textContent = String(line);
+      editableContent.appendChild(p);
+    }
+  }
+}
+
+applySiteContent();
 
 function setStatus(text, isError = false) {
   statusText.textContent = text;
@@ -344,6 +419,69 @@ function refreshRaceHud() {
   hudSpeed.textContent = me ? `${Math.round(Number(me.speed || 0))}` : '0';
   hudPing.textContent = rttMsSmoothed > 0 ? `${Math.round(rttMsSmoothed)} ms` : '-- ms';
   hudPhase.textContent = phase;
+}
+
+function updateHudVisibility() {
+  if (!hudMenu) return;
+  const phase = roomState.phase || 'lobby';
+  if (phase === 'lobby' || phase === 'finished') {
+    hideHudRequested = false;
+    forceHudVisible = false;
+  }
+  const forcedHiddenByRace = phase === 'countdown' || phase === 'racing';
+  const shouldHide = !forceHudVisible && (hideHudRequested || forcedHiddenByRace);
+  hudMenu.classList.toggle('hidden', shouldHide);
+}
+
+function refreshRoomPlayers() {
+  if (!roomPlayersList) return;
+  roomPlayersList.innerHTML = '';
+
+  const ordered = [...players].sort((a, b) => {
+    if (a.id === playerId) return -1;
+    if (b.id === playerId) return 1;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+
+  for (const player of ordered) {
+    const li = document.createElement('li');
+    const isMe = player.id === playerId;
+    const readyText = player.ready ? 'READY' : 'UNREADY';
+    li.textContent = `${isMe ? 'You' : player.name} — ${readyText}`;
+    roomPlayersList.appendChild(li);
+  }
+}
+
+function drawTrackPreview() {
+  if (!trackPreviewCtx || !trackPreviewCanvas) return;
+  const w = trackPreviewCanvas.width;
+  const h = trackPreviewCanvas.height;
+  trackPreviewCtx.clearRect(0, 0, w, h);
+
+  if (!mapData?.rows?.length) {
+    trackPreviewCtx.fillStyle = '#0b1220';
+    trackPreviewCtx.fillRect(0, 0, w, h);
+    return;
+  }
+
+  const rows = mapData.rows;
+  const rowCount = rows.length;
+  const colCount = rows[0]?.length || 1;
+  const tileW = w / colCount;
+  const tileH = h / rowCount;
+
+  for (let y = 0; y < rowCount; y++) {
+    for (let x = 0; x < colCount; x++) {
+      const tile = rows[y][x];
+      let color = '#2f6f2f';
+      if (tile === '.' || tile === 'P' || tile === 'F' || tile === 'C') color = '#9f7a52';
+      if (tile === 'P') color = '#60a5fa';
+      if (tile === 'F') color = '#e5e7eb';
+      if (tile === 'C') color = '#22d3ee';
+      trackPreviewCtx.fillStyle = color;
+      trackPreviewCtx.fillRect(x * tileW, y * tileH, Math.ceil(tileW), Math.ceil(tileH));
+    }
+  }
 }
 
 function ingestPlayerState(serverPlayers, serverTimeSeconds) {
@@ -807,6 +945,7 @@ function connect() {
       playerId = message.playerId;
       mapData = message.map;
       buildMapBuffer();
+      drawTrackPreview();
       if (message.map?.spawnRotationDeg !== undefined) {
         spawnDirectionSelect.value = String(Math.round(Number(message.map.spawnRotationDeg)) % 360);
       }
@@ -827,6 +966,7 @@ function connect() {
       }
       populateTracks(mapData?.id || null);
       buildMapBuffer();
+      drawTrackPreview();
       if (mapData?.spawnRotationDeg !== undefined) {
         const rotation = ((Math.round(Number(mapData.spawnRotationDeg)) % 360) + 360) % 360;
         spawnDirectionSelect.value = String(rotation);
@@ -847,13 +987,18 @@ function connect() {
         ...roomState,
         ...(message.room || {}),
       };
+      if (trackPreviewName) {
+        trackPreviewName.textContent = roomState.trackName || mapData?.name || 'Track';
+      }
       if (roomState.trackId) {
         populateTracks(roomState.trackId);
       }
       lapsSelect.value = String(roomState.lapsToWin || 3);
       refreshLeaderboards();
+      refreshRoomPlayers();
       refreshPhase();
       refreshRaceHud();
+      updateHudVisibility();
     }
 
     if (message.type === 'pong') {
@@ -1078,6 +1223,11 @@ readyBtn.addEventListener('click', () => {
   sendGarage(!(me?.ready || false));
 });
 startRaceBtn.addEventListener('click', () => send('start_race'));
+startRaceBtn.addEventListener('click', () => {
+  hideHudRequested = true;
+  forceHudVisible = false;
+  updateHudVisibility();
+});
 resetLobbyBtn.addEventListener('click', () => send('reset_lobby'));
 respawnBtn.addEventListener('click', () => send('respawn'));
 carSelect.addEventListener('change', () => sendGarage());
@@ -1110,6 +1260,16 @@ function setKeyState(key, code, pressed) {
 }
 
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const phase = roomState.phase || 'lobby';
+    if (phase === 'countdown' || phase === 'racing') {
+      e.preventDefault();
+      hideHudRequested = false;
+      forceHudVisible = true;
+      updateHudVisibility();
+    }
+  }
+
   if ((e.key === 'r' || e.key === 'R') && !e.repeat) {
     e.preventDefault();
     send('respawn');
@@ -1433,6 +1593,8 @@ function render(ts = 0) {
 updateFullscreenButtonLabel();
 refreshRaceHud();
 initMapEditor();
+drawTrackPreview();
+updateHudVisibility();
 setDesignerOpen(false);
 initMobileControls();
 render();
