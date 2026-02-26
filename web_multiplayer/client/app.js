@@ -1370,7 +1370,7 @@ function drawPlayer(p) {
   if (Number(p.carId) === 0 && focusCarImageReady) {
     ctx.save();
     ctx.rotate(Math.PI / 2);
-    ctx.drawImage(focusCarImage, -20, -12, 40, 24);
+    ctx.drawImage(focusCarImage, -20, -24, 40, 48);
     ctx.restore();
     ctx.restore();
 
@@ -1384,7 +1384,7 @@ function drawPlayer(p) {
   if (Number(p.carId) === 1 && subaruCarImageReady) {
     ctx.save();
     ctx.rotate(Math.PI / 2);
-    ctx.drawImage(subaruCarImage, -20, -12, 40, 24);
+    ctx.drawImage(subaruCarImage, -20, -24, 40, 48);
     ctx.restore();
     ctx.restore();
 
@@ -1398,7 +1398,7 @@ function drawPlayer(p) {
   if (Number(p.carId) === 5 && audiCarImageReady) {
     ctx.save();
     ctx.rotate((Math.PI / 2) - (5 * Math.PI / 180));
-    ctx.drawImage(audiCarImage, -20, -12, 40, 24);
+    ctx.drawImage(audiCarImage, -20, -24, 40, 48);
     ctx.restore();
     ctx.restore();
 
