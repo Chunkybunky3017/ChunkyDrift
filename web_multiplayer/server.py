@@ -395,6 +395,71 @@ def current_tile(room: RoomState, x: float, y: float):
     return room.track_rows[row][col]
 
 
+def find_nearest_road_tile(room: RoomState, x: float, y: float):
+    best_tile = None
+    best_dist_sq = float('inf')
+
+    for row in range(room.track_height_tiles):
+        row_data = room.track_rows[row]
+        for col in range(room.track_width_tiles):
+            if row_data[col] not in ROAD_TILES:
+                continue
+
+            center_x = (col + 0.5) * TILESIZE
+            center_y = (row + 0.5) * TILESIZE
+            dx = center_x - x
+            dy = center_y - y
+            dist_sq = dx * dx + dy * dy
+
+            if dist_sq < best_dist_sq:
+                best_dist_sq = dist_sq
+                best_tile = (col, row)
+
+    return best_tile
+
+
+def track_center_position(room: RoomState, x: float, y: float):
+    tile = find_nearest_road_tile(room, x, y)
+    if tile is None:
+        return room.spawn_x, room.spawn_y
+
+    col, row = tile
+
+    left = col
+    while left - 1 >= 0 and room.track_rows[row][left - 1] in ROAD_TILES:
+        left -= 1
+    right = col
+    while right + 1 < room.track_width_tiles and room.track_rows[row][right + 1] in ROAD_TILES:
+        right += 1
+
+    up = row
+    while up - 1 >= 0 and room.track_rows[up - 1][col] in ROAD_TILES:
+        up -= 1
+    down = row
+    while down + 1 < room.track_height_tiles and room.track_rows[down + 1][col] in ROAD_TILES:
+        down += 1
+
+    horizontal_run = right - left + 1
+    vertical_run = down - up + 1
+
+    center_col = col + 0.5
+    center_row = row + 0.5
+
+    if horizontal_run >= vertical_run and vertical_run > 1:
+        center_row = (up + down + 1) / 2.0
+    elif vertical_run > horizontal_run and horizontal_run > 1:
+        center_col = (left + right + 1) / 2.0
+
+    return center_col * TILESIZE, center_row * TILESIZE
+
+
+def respawn_player_on_track_center(room: RoomState, player: PlayerState):
+    player.x, player.y = track_center_position(room, player.x, player.y)
+    player.vx = 0.0
+    player.vy = 0.0
+    player.input_state = InputState()
+
+
 async def safe_send_json(ws: WebSocket, payload: dict):
     try:
         await ws.send_json(payload)
@@ -902,6 +967,9 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
                     p.ready = False
                     p.finished = False
                     p.laps = 0
+
+            elif msg_type == 'respawn':
+                respawn_player_on_track_center(room, player)
 
             elif msg_type == 'ping':
                 await safe_send_json(

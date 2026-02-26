@@ -1073,6 +1073,10 @@ function setKeyState(key, code, pressed) {
 }
 
 window.addEventListener('keydown', (e) => {
+  if ((e.key === 'r' || e.key === 'R') && !e.repeat) {
+    send('respawn');
+  }
+
   setKeyState(e.key, e.code, true);
   sendInputUpdate();
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
