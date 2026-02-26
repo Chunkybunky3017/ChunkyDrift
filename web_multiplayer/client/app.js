@@ -392,6 +392,21 @@ function updateFullscreenButtonLabel() {
   fullscreenBtn.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
 }
 
+function handleFullscreenChange() {
+  updateFullscreenButtonLabel();
+
+  const phase = roomState.phase || 'lobby';
+  const exitedFullscreen = document.fullscreenElement !== gameArea;
+  if (!exitedFullscreen) return;
+
+  if (phase === 'countdown' || phase === 'racing' || phase === 'finished') {
+    finishedOverlayDelayUntilMs = 0;
+    hideHudRequested = false;
+    forceHudVisible = true;
+    updateHudVisibility();
+  }
+}
+
 async function toggleFullscreen() {
   try {
     const isFullscreen = document.fullscreenElement === gameArea;
@@ -1286,7 +1301,7 @@ openDesignerBtn.addEventListener('click', () => {
 closeDesignerBtn.addEventListener('click', () => setDesignerOpen(false));
 lapsSelect.addEventListener('change', () => sendGarage());
 fullscreenBtn.addEventListener('click', () => toggleFullscreen());
-document.addEventListener('fullscreenchange', updateFullscreenButtonLabel);
+document.addEventListener('fullscreenchange', handleFullscreenChange);
 
 function isDriftKey(key, code) {
   return key === 'Shift' || code === 'ShiftLeft' || code === 'ShiftRight';
