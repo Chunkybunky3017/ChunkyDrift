@@ -1370,7 +1370,7 @@ function drawPlayer(p) {
   if (Number(p.carId) === 0 && focusCarImageReady) {
     ctx.save();
     ctx.rotate(Math.PI / 2);
-    ctx.drawImage(focusCarImage, -20, -24, 40, 48);
+    ctx.drawImage(focusCarImage, -18, -24, 36, 48);
     ctx.restore();
     ctx.restore();
 
