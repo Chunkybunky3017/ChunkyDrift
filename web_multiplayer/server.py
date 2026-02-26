@@ -970,6 +970,15 @@ async def websocket_game(websocket: WebSocket, room_id: str, player_name: str):
 
             elif msg_type == 'respawn':
                 respawn_player_on_track_center(room, player)
+                await safe_send_json(
+                    websocket,
+                    {
+                        'type': 'respawned',
+                        'x': player.x,
+                        'y': player.y,
+                        'rotationDeg': player.rotation_deg,
+                    },
+                )
 
             elif msg_type == 'ping':
                 await safe_send_json(

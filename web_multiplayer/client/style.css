@@ -110,6 +110,10 @@ body {
   background: #64748b;
 }
 
+#respawnBtn {
+  background: #475569;
+}
+
 #applyTrackBtn {
   background: #8b5cf6;
 }

@@ -8,6 +8,7 @@ const fullscreenBtn = document.getElementById('fullscreenBtn');
 const readyBtn = document.getElementById('readyBtn');
 const startRaceBtn = document.getElementById('startRaceBtn');
 const resetLobbyBtn = document.getElementById('resetLobbyBtn');
+const respawnBtn = document.getElementById('respawnBtn');
 const carSelect = document.getElementById('carSelect');
 const trackSelect = document.getElementById('trackSelect');
 const applyTrackBtn = document.getElementById('applyTrackBtn');
@@ -862,6 +863,30 @@ function connect() {
       updateLatencyModel(rttMs);
       updateServerClockOffset(message.serverTime);
     }
+
+    if (message.type === 'respawned') {
+      const me = findMe();
+      if (me) {
+        me.x = Number(message.x ?? me.x);
+        me.y = Number(message.y ?? me.y);
+        me.rotationDeg = Number(message.rotationDeg ?? me.rotationDeg);
+        me.vx = 0;
+        me.vy = 0;
+      }
+
+      if (playerId && playerNetState[playerId]) {
+        const net = playerNetState[playerId];
+        net.prevX = Number(message.x ?? net.prevX);
+        net.prevY = Number(message.y ?? net.prevY);
+        net.targetX = Number(message.x ?? net.targetX);
+        net.targetY = Number(message.y ?? net.targetY);
+        net.prevRot = Number(message.rotationDeg ?? net.prevRot);
+        net.targetRot = Number(message.rotationDeg ?? net.targetRot);
+        net.velocityX = 0;
+        net.velocityY = 0;
+        net.rotationVelocity = 0;
+      }
+    }
   };
 }
 
@@ -1043,6 +1068,7 @@ readyBtn.addEventListener('click', () => {
 });
 startRaceBtn.addEventListener('click', () => send('start_race'));
 resetLobbyBtn.addEventListener('click', () => send('reset_lobby'));
+respawnBtn.addEventListener('click', () => send('respawn'));
 carSelect.addEventListener('change', () => sendGarage());
 trackSelect.addEventListener('change', () => {
   if (trackSelect.value !== 'custom') {
@@ -1074,6 +1100,7 @@ function setKeyState(key, code, pressed) {
 
 window.addEventListener('keydown', (e) => {
   if ((e.key === 'r' || e.key === 'R') && !e.repeat) {
+    e.preventDefault();
     send('respawn');
   }
 
