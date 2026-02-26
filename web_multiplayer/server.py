@@ -455,6 +455,7 @@ def track_center_position(room: RoomState, x: float, y: float):
 
 def respawn_player_on_track_center(room: RoomState, player: PlayerState):
     player.x, player.y = track_center_position(room, player.x, player.y)
+    player.rotation_deg = room.spawn_rotation_deg
     player.vx = 0.0
     player.vy = 0.0
     player.input_state = InputState()

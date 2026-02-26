@@ -874,6 +874,13 @@ function connect() {
         me.vy = 0;
       }
 
+      inputState.up = false;
+      inputState.down = false;
+      inputState.left = false;
+      inputState.right = false;
+      inputState.handbrake = false;
+      keyboardHandbrake = false;
+
       if (playerId && playerNetState[playerId]) {
         const net = playerNetState[playerId];
         net.prevX = Number(message.x ?? net.prevX);
@@ -886,6 +893,10 @@ function connect() {
         net.velocityY = 0;
         net.rotationVelocity = 0;
       }
+
+      lastInputSignature = '';
+      sendInputUpdate(true);
+      setStatus('Respawned');
     }
   };
 }
