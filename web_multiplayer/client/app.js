@@ -107,9 +107,12 @@ let trackedLapStartRaceMs = 0;
 let keyboardHandbrake = false;
 let hideHudRequested = false;
 let forceHudVisible = false;
+let finishedOverlayDelayUntilMs = 0;
+let lastKnownPhase = 'lobby';
 const LEADERBOARD_PREVIEW_COUNT = 5;
 let showFullRoomLeaderboard = false;
 let showFullGlobalLeaderboard = false;
+const FINISHED_OVERLAY_DELAY_MS = 4000;
 
 const gamepadState = {
   connected: false,
@@ -408,6 +411,21 @@ async function toggleFullscreen() {
   }
 }
 
+async function requestRaceFullscreen() {
+  try {
+    if (document.fullscreenElement !== gameArea) {
+      await gameArea.requestFullscreen();
+      if (screen.orientation && screen.orientation.lock) {
+        try {
+          await screen.orientation.lock('landscape');
+        } catch {
+        }
+      }
+    }
+  } catch {
+  }
+}
+
 function refreshRaceHud() {
   const me = findMe();
   const phase = roomState.phase || 'lobby';
@@ -437,12 +455,13 @@ function refreshRaceHud() {
 function updateHudVisibility() {
   if (!hudMenu) return;
   const phase = roomState.phase || 'lobby';
-  if (phase === 'lobby' || phase === 'finished') {
+  if (phase === 'lobby') {
     hideHudRequested = false;
     forceHudVisible = false;
   }
+  const showingResultsDelay = phase === 'finished' && performance.now() < finishedOverlayDelayUntilMs;
   const forcedHiddenByRace = phase === 'countdown' || phase === 'racing';
-  const shouldHide = !forceHudVisible && (hideHudRequested || forcedHiddenByRace);
+  const shouldHide = !forceHudVisible && (hideHudRequested || forcedHiddenByRace || showingResultsDelay);
   hudMenu.classList.toggle('hidden', shouldHide);
 }
 
@@ -994,12 +1013,20 @@ function connect() {
     }
 
     if (message.type === 'state') {
+      const previousPhase = roomState.phase || 'lobby';
       updateServerClockOffset(message.serverTime);
       ingestPlayerState(message.players || [], message.serverTime);
       roomState = {
         ...roomState,
         ...(message.room || {}),
       };
+      const currentPhase = roomState.phase || 'lobby';
+      if (previousPhase !== 'finished' && currentPhase === 'finished') {
+        finishedOverlayDelayUntilMs = performance.now() + FINISHED_OVERLAY_DELAY_MS;
+        hideHudRequested = true;
+        forceHudVisible = false;
+      }
+      lastKnownPhase = currentPhase;
       if (trackPreviewName) {
         trackPreviewName.textContent = roomState.trackName || mapData?.name || 'Track';
       }
@@ -1236,10 +1263,11 @@ readyBtn.addEventListener('click', () => {
   sendGarage(!(me?.ready || false));
 });
 startRaceBtn.addEventListener('click', () => send('start_race'));
-startRaceBtn.addEventListener('click', () => {
+startRaceBtn.addEventListener('click', async () => {
   hideHudRequested = true;
   forceHudVisible = false;
   updateHudVisibility();
+  await requestRaceFullscreen();
 });
 resetLobbyBtn.addEventListener('click', () => send('reset_lobby'));
 respawnBtn.addEventListener('click', () => send('respawn'));
