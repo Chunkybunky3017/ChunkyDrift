@@ -482,6 +482,51 @@ def room_leaderboard_snapshot(room: RoomState):
     ]
 
 
+def race_finish_threshold(player_count: int) -> int:
+    if player_count <= 1:
+        return 1
+    if player_count == 2:
+        return 1
+    return player_count - 1
+
+
+def final_results_snapshot(room: RoomState):
+    finished = [p for p in room.players.values() if p.finished]
+    finished.sort(key=lambda p: p.race_total_time)
+
+    unfinished = [p for p in room.players.values() if not p.finished]
+    unfinished.sort(key=lambda p: (-p.laps, p.best_lap_time if p.best_lap_time > 0 else float('inf'), p.name.lower()))
+
+    results = []
+    position = 1
+
+    for p in finished:
+        results.append(
+            {
+                'id': p.player_id,
+                'name': p.name,
+                'position': position,
+                'timeMs': int(p.race_total_time),
+                'finished': True,
+            }
+        )
+        position += 1
+
+    for p in unfinished:
+        results.append(
+            {
+                'id': p.player_id,
+                'name': p.name,
+                'position': position,
+                'timeMs': None,
+                'finished': False,
+            }
+        )
+        position += 1
+
+    return results
+
+
 async def broadcast_room_state(room: RoomState):
     now = now_seconds()
     include_leaderboards = (
@@ -506,6 +551,12 @@ async def broadcast_room_state(room: RoomState):
         ensure_track_leaderboard(room.track_id)
         room_payload['roomLeaderboard'] = room_leaderboard_snapshot(room)
         room_payload['globalLeaderboard'] = LEADERBOARD_STORE[room.track_id][leaderboard_category(room.laps_to_win)]
+
+    if room.phase == 'finished':
+        final_results = final_results_snapshot(room)
+        room_payload['finalResults'] = final_results
+        winner_result = final_results[0] if final_results else None
+        room_payload['winnerTimeMs'] = winner_result['timeMs'] if winner_result else None
 
     payload = {
         'type': 'state',
@@ -790,7 +841,11 @@ def update_laps_and_finish(room: RoomState):
                 if room.winner_id is None:
                     room.winner_id = player.player_id
                     update_global_leaderboard(room.track_id, player, room.laps_to_win)
-                    room.phase = 'finished'
+
+    finished_count = sum(1 for p in room.players.values() if p.finished)
+    player_count = len(room.players)
+    if player_count > 0 and finished_count >= race_finish_threshold(player_count):
+        room.phase = 'finished'
 
 
 def get_or_create_room(room_id: str) -> RoomState:

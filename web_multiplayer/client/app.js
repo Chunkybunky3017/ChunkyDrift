@@ -87,6 +87,8 @@ let roomState = {
   raceElapsedMs: 0,
   roomLeaderboard: [],
   globalLeaderboard: [],
+  finalResults: [],
+  winnerTimeMs: null,
 };
 
 const INTERPOLATION_BACK_TIME_MIN_MS = 45;
@@ -220,6 +222,17 @@ function formatMs(ms) {
   const s = Math.floor((total % 60000) / 1000);
   const t = total % 1000;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(t).padStart(3, '0')}`;
+}
+
+function ordinalSuffix(value) {
+  const number = Number(value || 0);
+  const teen = number % 100;
+  if (teen >= 11 && teen <= 13) return `${number}th`;
+  const tail = number % 10;
+  if (tail === 1) return `${number}st`;
+  if (tail === 2) return `${number}nd`;
+  if (tail === 3) return `${number}rd`;
+  return `${number}th`;
 }
 
 function normalizeAngleDeg(degrees) {
@@ -1568,6 +1581,54 @@ function drawPlayer(p) {
   ctx.fillText(label, p.x - 22, p.y - 14);
 }
 
+function drawRaceResultsPopup() {
+  if ((roomState.phase || 'lobby') !== 'finished') return;
+
+  const results = Array.isArray(roomState.finalResults) ? roomState.finalResults : [];
+  if (!results.length) return;
+
+  const me = results.find((entry) => entry.id === playerId);
+  if (!me) return;
+
+  const winner = results[0];
+
+  const boxWidth = 430;
+  const boxHeight = 200;
+  const x = (canvas.width - boxWidth) / 2;
+  const y = (canvas.height - boxHeight) / 2;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(2, 6, 23, 0.82)';
+  ctx.fillRect(x, y, boxWidth, boxHeight);
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, boxWidth, boxHeight);
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 26px Arial';
+  ctx.fillText('Race Results', x + 16, y + 38);
+
+  ctx.font = '20px Arial';
+  ctx.fillText(`You placed ${ordinalSuffix(me.position)}`, x + 16, y + 74);
+
+  const myTimeText = me.timeMs !== null && me.timeMs !== undefined
+    ? formatMs(me.timeMs)
+    : 'DNF';
+  ctx.fillText(`Your time: ${myTimeText}`, x + 16, y + 104);
+
+  if (winner) {
+    const winnerTimeText = winner.timeMs !== null && winner.timeMs !== undefined
+      ? formatMs(winner.timeMs)
+      : 'DNF';
+    ctx.fillText(`Winner: ${winner.name} (${winnerTimeText})`, x + 16, y + 136);
+  }
+
+  ctx.font = '14px Arial';
+  ctx.fillStyle = '#93c5fd';
+  ctx.fillText('Press ESC to open the menu overlay', x + 16, y + 170);
+  ctx.restore();
+}
+
 function render(ts = 0) {
   let dt = 1 / 60;
   if (lastRenderTs > 0) {
@@ -1585,6 +1646,7 @@ function render(ts = 0) {
   for (const p of renderedPlayers) {
     drawPlayer(p);
   }
+  drawRaceResultsPopup();
   refreshRaceHud();
 
   requestAnimationFrame(render);
