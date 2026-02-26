@@ -93,24 +93,6 @@ let keyboardHandbrake = false;
 const LEADERBOARD_PREVIEW_COUNT = 5;
 let showFullRoomLeaderboard = false;
 let showFullGlobalLeaderboard = false;
-const focusCarImage = new Image();
-let focusCarImageReady = false;
-focusCarImage.onload = () => {
-  focusCarImageReady = true;
-};
-focusCarImage.src = '/client/untitled.png';
-const subaruCarImage = new Image();
-let subaruCarImageReady = false;
-subaruCarImage.onload = () => {
-  subaruCarImageReady = true;
-};
-subaruCarImage.src = '/client/subaru-wrx.png';
-const audiCarImage = new Image();
-let audiCarImageReady = false;
-audiCarImage.onload = () => {
-  audiCarImageReady = true;
-};
-audiCarImage.src = '/client/audi-quattro.png';
 
 const gamepadState = {
   connected: false,
@@ -1366,48 +1348,6 @@ function drawPlayer(p) {
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.rotate((Math.PI / 180) * p.rotationDeg + Math.PI);
-
-  if (Number(p.carId) === 0 && focusCarImageReady) {
-    ctx.save();
-    ctx.rotate(Math.PI / 2);
-    ctx.drawImage(focusCarImage, -18, -24, 36, 48);
-    ctx.restore();
-    ctx.restore();
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '12px Arial';
-    const label = `${p.name} L${p.laps}`;
-    ctx.fillText(label, p.x - 22, p.y - 14);
-    return;
-  }
-
-  if (Number(p.carId) === 1 && subaruCarImageReady) {
-    ctx.save();
-    ctx.rotate(Math.PI / 2);
-    ctx.drawImage(subaruCarImage, -20, -24, 40, 48);
-    ctx.restore();
-    ctx.restore();
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '12px Arial';
-    const label = `${p.name} L${p.laps}`;
-    ctx.fillText(label, p.x - 22, p.y - 14);
-    return;
-  }
-
-  if (Number(p.carId) === 5 && audiCarImageReady) {
-    ctx.save();
-    ctx.rotate((Math.PI / 2) - (5 * Math.PI / 180));
-    ctx.drawImage(audiCarImage, -20, -24, 40, 48);
-    ctx.restore();
-    ctx.restore();
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '12px Arial';
-    const label = `${p.name} L${p.laps}`;
-    ctx.fillText(label, p.x - 22, p.y - 14);
-    return;
-  }
 
   ctx.fillStyle = '#0a0a0a';
   ctx.fillRect(-15, -9, 7, 4);
