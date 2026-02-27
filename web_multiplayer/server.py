@@ -14,8 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from settings import BRANDS_HATCH_MAP, CAR_MODELS, GAME_MAP, TILESIZE
 
 
-GRAVEL_TILE = 'G'
-ROAD_TILES = {'.', 'P', 'F', 'C', GRAVEL_TILE}
+ROAD_TILES = {'.', 'P', 'F', 'C'}
 TICK_HZ = 60
 CAR_COLLISION_RADIUS = 12.0
 LEADERBOARD_FILE = Path(__file__).parent / 'web_leaderboard.json'
@@ -26,36 +25,6 @@ ALLOWED_MAP_TILES = ROAD_TILES | {'1', 'W'}
 CUSTOM_TRACKS_FILE = Path(__file__).parent / 'custom_tracks.json'
 DEFAULT_SPAWN_ROTATION_DEG = 90.0
 SPAWN_Y_OFFSET = 4.0
-GRAVEL_ACCEL_MULT = 0.62
-GRAVEL_MAX_SPEED_MULT = 0.68
-GRAVEL_DRAG_MULT = 0.985
-GRAVEL_FRICTION_MULT = 2.1
-GRAVEL_GRIP_MULT = 0.78
-
-
-def build_gravel_variant(rows: List[str]) -> List[str]:
-    if not rows:
-        return []
-
-    gravel_rows = [list(row) for row in rows]
-    gravel_zones = [
-        (8, 2, 32, 9),
-        (1, 35, 26, 44),
-        (37, 33, 63, 42),
-    ]
-
-    for left, top, right, bottom in gravel_zones:
-        top_idx = max(0, top)
-        bottom_idx = min(len(gravel_rows), bottom)
-        for y in range(top_idx, bottom_idx):
-            row = gravel_rows[y]
-            left_idx = max(0, left)
-            right_idx = min(len(row), right)
-            for x in range(left_idx, right_idx):
-                if row[x] == '.':
-                    row[x] = GRAVEL_TILE
-
-    return [''.join(row) for row in gravel_rows]
 
 PRESET_TRACKS = {
     'brands_hatch': {
@@ -68,12 +37,6 @@ PRESET_TRACKS = {
         'id': 'rally_loop',
         'name': 'Rally Loop',
         'rows': GAME_MAP,
-        'spawnRotationDeg': 180.0,
-    },
-    'gravel_gauntlet': {
-        'id': 'gravel_gauntlet',
-        'name': 'Gravel Gauntlet',
-        'rows': build_gravel_variant(GAME_MAP),
         'spawnRotationDeg': 180.0,
     },
 }
@@ -161,7 +124,7 @@ def validate_map_rows(rows: List[str]):
             return False, 'All map rows must have the same width.', None
         for char in row:
             if char not in ALLOWED_MAP_TILES:
-                return False, f"Invalid tile '{char}'. Use only 1, W, ., G, P, F, C.", None
+                return False, f"Invalid tile '{char}'. Use only 1, W, ., P, F, C.", None
 
     start_count = sum(row.count('P') for row in cleaned_rows)
     finish_count = sum(row.count('F') for row in cleaned_rows)
@@ -491,8 +454,57 @@ def track_center_position(room: RoomState, x: float, y: float):
 
 
 def respawn_player_on_track_center(room: RoomState, player: PlayerState):
+    tile = find_nearest_road_tile(room, player.x, player.y)
     player.x, player.y = track_center_position(room, player.x, player.y)
-    player.rotation_deg = room.spawn_rotation_deg
+
+    if tile is None:
+        target_rotation = normalize_spawn_rotation(player.rotation_deg, room.spawn_rotation_deg)
+    else:
+        col, row = tile
+
+        left_steps = 0
+        x = col - 1
+        while x >= 0 and room.track_rows[row][x] in ROAD_TILES:
+            left_steps += 1
+            x -= 1
+
+        right_steps = 0
+        x = col + 1
+        while x < room.track_width_tiles and room.track_rows[row][x] in ROAD_TILES:
+            right_steps += 1
+            x += 1
+
+        up_steps = 0
+        y = row - 1
+        while y >= 0 and room.track_rows[y][col] in ROAD_TILES:
+            up_steps += 1
+            y -= 1
+
+        down_steps = 0
+        y = row + 1
+        while y < room.track_height_tiles and room.track_rows[y][col] in ROAD_TILES:
+            down_steps += 1
+            y += 1
+
+        horizontal_run = left_steps + right_steps
+        vertical_run = up_steps + down_steps
+
+        if horizontal_run >= vertical_run:
+            target_rotation = 180.0 if right_steps >= left_steps else 0.0
+        else:
+            target_rotation = 270.0 if down_steps >= up_steps else 90.0
+
+        brake_amount = max(0.0, min(1.0, float(player.input_state.brake)))
+        throttle_amount = max(0.0, min(1.0, float(player.input_state.throttle)))
+        if brake_amount <= 0 and player.input_state.down:
+            brake_amount = 1.0
+        if throttle_amount <= 0 and player.input_state.up:
+            throttle_amount = 1.0
+
+        if brake_amount > throttle_amount + 0.1:
+            target_rotation = (target_rotation + 180.0) % 360
+
+    player.rotation_deg = normalize_spawn_rotation(target_rotation, room.spawn_rotation_deg)
     player.vx = 0.0
     player.vy = 0.0
     player.input_state = InputState()
@@ -693,15 +705,6 @@ def step_player_physics(room: RoomState, player: PlayerState, dt: float):
     friction = car['friction']
     base_grip = car['grip']
     turn_rate = 150.0
-
-    tile_under_car = current_tile(room, player.x, player.y)
-    if tile_under_car == GRAVEL_TILE:
-        accel *= GRAVEL_ACCEL_MULT
-        brake_accel *= 0.85
-        max_speed *= GRAVEL_MAX_SPEED_MULT
-        drag *= GRAVEL_DRAG_MULT
-        friction *= GRAVEL_FRICTION_MULT
-        base_grip *= GRAVEL_GRIP_MULT
 
     if player.finished:
         player.vx *= 0.9

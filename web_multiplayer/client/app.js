@@ -522,7 +522,6 @@ function drawTrackPreview() {
       const tile = rows[y][x];
       let color = '#2f6f2f';
       if (tile === '.' || tile === 'P' || tile === 'F' || tile === 'C') color = '#9f7a52';
-      if (tile === 'G') color = '#7a7369';
       if (tile === 'P') color = '#60a5fa';
       if (tile === 'F') color = '#e5e7eb';
       if (tile === 'C') color = '#22d3ee';
@@ -813,7 +812,6 @@ function getCanvasPointFromEvent(event) {
 function tileColor(tile) {
   if (tile === '1' || tile === 'W') return '#2f6f2f';
   if (tile === '.') return '#9f7a52';
-  if (tile === 'G') return '#7a7369';
   if (tile === 'P') return '#60a5fa';
   if (tile === 'F') return '#e5e7eb';
   if (tile === 'C') return '#22d3ee';
@@ -1150,25 +1148,6 @@ function buildMapBuffer() {
           mapBufferCtx.fillRect(gx, gy, 2, 2);
         }
       } else {
-        const isGravel = tile === 'G';
-
-        if (isGravel) {
-          const shade = 0.9 + tileNoise(x, y, 59) * 0.18;
-          const r = Math.max(106, Math.min(162, Math.floor(128 * shade)));
-          const g = Math.max(102, Math.min(156, Math.floor(123 * shade)));
-          const b = Math.max(96, Math.min(150, Math.floor(117 * shade)));
-          mapBufferCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-          mapBufferCtx.fillRect(px, py, tileSize, tileSize);
-
-          const stones = 7;
-          for (let i = 0; i < stones; i++) {
-            const n = tileNoise(x + i * 1.9, y - i * 0.7, 61);
-            const gx = px + Math.floor(n * (tileSize - 1));
-            const gy = py + Math.floor(tileNoise(y + i * 1.5, x + i * 0.3, 67) * (tileSize - 1));
-            mapBufferCtx.fillStyle = n > 0.65 ? '#c2b8aa' : n > 0.35 ? '#8f8679' : '#6f675d';
-            mapBufferCtx.fillRect(gx, gy, 2, 2);
-          }
-        } else {
         const shade = 0.9 + tileNoise(x, y, 41) * 0.2;
         const r = Math.max(112, Math.min(182, Math.floor(148 * shade)));
         const g = Math.max(82, Math.min(136, Math.floor(112 * shade)));
@@ -1183,7 +1162,6 @@ function buildMapBuffer() {
           const dy = py + Math.floor(tileNoise(y + i * 1.8, x + i * 0.6, 13) * tileSize);
           mapBufferCtx.fillStyle = n > 0.68 ? '#b99366' : n > 0.35 ? '#946f48' : '#6b4f33';
           mapBufferCtx.fillRect(dx, dy, 2, 2);
-        }
         }
 
         const top = y > 0 ? rows[y - 1][x] : '1';
