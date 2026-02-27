@@ -78,6 +78,7 @@
         <div class="map-editor-tiles">
           <button id="toolWallBtn" class="tile-tool active" data-tile="1" type="button">Wall (1)</button>
           <button id="toolRoadBtn" class="tile-tool" data-tile="." type="button">Road (.)</button>
+          <button id="toolGravelBtn" class="tile-tool" data-tile="G" type="button">Gravel (G)</button>
           <button id="toolStartBtn" class="tile-tool" data-tile="P" type="button">Start (P)</button>
           <button id="toolFinishBtn" class="tile-tool" data-tile="F" type="button">Finish (F)</button>
           <button id="toolCheckpointBtn" class="tile-tool" data-tile="C" type="button">Checkpoint (C)</button>
@@ -87,7 +88,7 @@
 
         <details class="advanced-map-text">
           <summary>Advanced: paste/edit raw map text</summary>
-          <label for="customMapInput">Rows using only 1 . P F C (exactly one P)</label>
+          <label for="customMapInput">Rows using only 1 . G P F C (exactly one P)</label>
           <textarea id="customMapInput" rows="5" placeholder="Optional: paste map rows here..."></textarea>
           <div class="advanced-map-actions">
             <button id="textToEditorBtn" type="button">Load Text Into Editor</button>
