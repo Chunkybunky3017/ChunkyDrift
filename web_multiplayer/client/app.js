@@ -1354,7 +1354,21 @@ setInterval(() => {
 
 function readTrigger(axisValue) {
   if (typeof axisValue !== 'number') return 0;
-  return Math.max(0, Math.min(1, (axisValue + 1) * 0.5));
+  const value = Math.max(-1, Math.min(1, axisValue));
+
+  if (value < 0) {
+    return (value + 1) * 0.5;
+  }
+
+  return value;
+}
+
+function normalizeTrigger(value) {
+  if (!Number.isFinite(value)) return 0;
+  const clamped = Math.max(0, Math.min(1, value));
+  if (clamped <= 0.02) return 0;
+  if (clamped >= 0.98) return 1;
+  return clamped;
 }
 
 function applyDeadzone(value, deadzone = 0.15) {
@@ -1382,14 +1396,18 @@ function updateGamepadState() {
   const throttleAxis = readTrigger(pad.axes[5]);
   const brakeAxis = readTrigger(pad.axes[2]);
 
-  const throttleButton = pad.buttons?.[7]?.value || 0;
-  const brakeButton = pad.buttons?.[6]?.value || 0;
+  const throttleButton = Number.isFinite(pad.buttons?.[7]?.value) ? pad.buttons[7].value : 0;
+  const brakeButton = Number.isFinite(pad.buttons?.[6]?.value) ? pad.buttons[6].value : 0;
   const handbrakePressed = Boolean(pad.buttons?.[0]?.pressed || pad.buttons?.[1]?.pressed || pad.buttons?.[2]?.pressed);
+
+  const hasTriggerButtons = Boolean(pad.buttons?.[7] || pad.buttons?.[6]);
+  const throttleRaw = hasTriggerButtons ? throttleButton : Math.max(throttleAxis, throttleButton);
+  const brakeRaw = hasTriggerButtons ? brakeButton : Math.max(brakeAxis, brakeButton);
 
   gamepadState.connected = true;
   gamepadState.steer = steerAxis;
-  gamepadState.throttle = Math.max(throttleAxis, throttleButton);
-  gamepadState.brake = Math.max(brakeAxis, brakeButton);
+  gamepadState.throttle = normalizeTrigger(throttleRaw);
+  gamepadState.brake = normalizeTrigger(brakeRaw);
   gamepadState.handbrake = handbrakePressed;
 }
 
